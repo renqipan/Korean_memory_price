@@ -1,6 +1,11 @@
 import unittest
 
-from korean_memory_price.metrics import build_memory_index, build_unit_price_rows
+from korean_memory_price.metrics import (
+    build_category_memory_indexes,
+    build_memory_index,
+    build_unit_price_rows,
+)
+from korean_memory_price.categories import parse_memory_categories
 from korean_memory_price.models import TradeRecord
 
 
@@ -73,6 +78,41 @@ class MetricsTests(unittest.TestCase):
         unit_rows = build_unit_price_rows(records)
         self.assertTrue(all(row["unit_price_basis"] == "kg" for row in unit_rows))
         self.assertEqual(unit_rows[-1]["unit_price_metric"], 140.0)
+
+    def test_category_indexes_split_memory_segments(self):
+        records = [
+            TradeRecord(month="2024-01", hs_code="8542321010", export_value_usd=100, export_weight_kg=10),
+            TradeRecord(month="2024-02", hs_code="8542321010", export_value_usd=200, export_weight_kg=10),
+            TradeRecord(month="2024-01", hs_code="8542323000", export_value_usd=300, export_weight_kg=10),
+            TradeRecord(month="2024-02", hs_code="8542323000", export_value_usd=600, export_weight_kg=10),
+            TradeRecord(month="2024-01", hs_code="8542321030", export_value_usd=200, export_weight_kg=10),
+            TradeRecord(month="2024-02", hs_code="8542321030", export_value_usd=300, export_weight_kg=10),
+            TradeRecord(month="2024-01", hs_code="8471709000", export_value_usd=400, export_weight_kg=10),
+            TradeRecord(month="2024-02", hs_code="8471709000", export_value_usd=800, export_weight_kg=10),
+            TradeRecord(month="2024-01", hs_code="8542321020", export_value_usd=50, export_weight_kg=10),
+            TradeRecord(month="2024-02", hs_code="8542321020", export_value_usd=50, export_weight_kg=10),
+        ]
+        unit_rows = build_unit_price_rows(records)
+        category_rows = build_category_memory_indexes(unit_rows)
+        by_category_month = {
+            (row["category"], row["month"]): row
+            for row in category_rows
+        }
+
+        self.assertEqual(round(by_category_month[("dram_hbm", "2024-02")]["unit_price_index"], 6), 200.0)
+        self.assertEqual(round(by_category_month[("nand", "2024-02")]["unit_price_index"], 6), 150.0)
+        self.assertEqual(round(by_category_month[("ssd", "2024-02")]["unit_price_index"], 6), 200.0)
+        self.assertEqual(
+            round(by_category_month[("total_memory", "2024-02")]["unit_price_index"], 6),
+            185.714286,
+        )
+        self.assertIn("8542321020", by_category_month[("total_memory", "2024-02")]["hs_codes"])
+
+    def test_custom_category_replaces_default_category_key(self):
+        categories = parse_memory_categories(["nand=123456"])
+        by_key = {category.key: category for category in categories}
+        self.assertEqual(by_key["nand"].hs_patterns, ("123456",))
+        self.assertEqual(len([category for category in categories if category.key == "nand"]), 1)
 
 
 if __name__ == "__main__":

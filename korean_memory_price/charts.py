@@ -6,6 +6,7 @@ import subprocess
 from tempfile import TemporaryDirectory
 from pathlib import Path
 
+from .categories import DEFAULT_MEMORY_CATEGORIES
 from .utils import ensure_parent, parse_number
 
 
@@ -16,6 +17,11 @@ PALETTE = {
     "unit_price_mom_1m_pct": "#7c3aed",
     "memory_score": "#111827",
     "memory_score_3m_avg": "#dc2626",
+    "dram_hbm": "#b45309",
+    "nand": "#2563eb",
+    "ssd": "#0f766e",
+    "total_memory": "#111827",
+    "category_price_index": "#111827",
 }
 
 CHART_FONT_SIZES = {
@@ -71,6 +77,24 @@ def _render_memory_score_svg(
 
 def render_memory_score_png(rows: list[dict[str, object]], path: str | Path) -> None:
     _render_png_from_svg_renderer(_render_memory_score_svg, rows, path)
+
+
+def render_category_price_trends_png(
+    rows: list[dict[str, object]],
+    path: str | Path,
+) -> None:
+    _render_png_from_svg_renderer(_render_category_price_trends_svg, rows, path)
+
+
+def render_category_price_trend_png(
+    rows: list[dict[str, object]],
+    category: str,
+    path: str | Path,
+) -> None:
+    def renderer(_: list[dict[str, object]], svg_path: str | Path) -> None:
+        _render_single_category_price_trend_svg(rows, category, svg_path)
+
+    _render_png_from_svg_renderer(renderer, rows, path)
 
 
 def _render_line_chart(
@@ -175,6 +199,95 @@ def _render_line_chart(
     svg.append("</svg>")
     ensure_parent(path)
     Path(path).write_text("\n".join(svg), encoding="utf-8")
+
+
+def _render_category_price_trends_svg(
+    rows: list[dict[str, object]],
+    path: str | Path,
+) -> None:
+    wide_rows, series = _category_price_wide_rows(rows)
+    _render_line_chart(
+        rows=wide_rows,
+        series=series,
+        path=path,
+        title="Korean Memory Unit Price Index by Category",
+        y_label="index",
+        zero_line=False,
+        y_min=0.0,
+    )
+
+
+def _render_single_category_price_trend_svg(
+    rows: list[dict[str, object]],
+    category: str,
+    path: str | Path,
+) -> None:
+    filtered_rows = [
+        {
+            "month": row.get("month"),
+            "category_price_index": row.get("unit_price_index"),
+            "category_label": row.get("category_label"),
+        }
+        for row in rows
+        if str(row.get("category")) == category
+    ]
+    label = _category_label(rows, category)
+    _render_line_chart(
+        rows=filtered_rows,
+        series=[("category_price_index", label)],
+        path=path,
+        title=f"{label} Unit Price Index",
+        y_label="index",
+        zero_line=False,
+        y_min=0.0,
+    )
+
+
+def _category_price_wide_rows(
+    rows: list[dict[str, object]],
+) -> tuple[list[dict[str, object]], list[tuple[str, str]]]:
+    labels_by_category = {
+        str(row.get("category")): str(row.get("category_label") or row.get("category"))
+        for row in rows
+        if row.get("category")
+    }
+    ordered_categories = [
+        category.key
+        for category in DEFAULT_MEMORY_CATEGORIES
+        if category.key in labels_by_category
+    ]
+    ordered_categories.extend(
+        sorted(set(labels_by_category) - set(ordered_categories))
+    )
+    months = sorted({str(row.get("month")) for row in rows if row.get("month")})
+    values: dict[tuple[str, str], object] = {}
+    for row in rows:
+        month = str(row.get("month"))
+        category = str(row.get("category"))
+        if month and category:
+            values[(month, category)] = row.get("unit_price_index")
+    wide_rows = [
+        {
+            "month": month,
+            **{
+                category: values.get((month, category))
+                for category in ordered_categories
+            },
+        }
+        for month in months
+    ]
+    series = [
+        (category, labels_by_category[category])
+        for category in ordered_categories
+    ]
+    return wide_rows, series
+
+
+def _category_label(rows: list[dict[str, object]], category: str) -> str:
+    for row in rows:
+        if str(row.get("category")) == category:
+            return str(row.get("category_label") or category)
+    return category.replace("_", " ").title()
 
 
 def _render_png_from_svg_renderer(

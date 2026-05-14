@@ -21,10 +21,12 @@ KCS OpenAPI 的品目别进出口实绩按 HS code 返回 `expDlr` 和 `expWgt`�
 
 ## 默认关注 HS code
 
-- SSD: `8471704010`
-- DRAM/HBM family: `854232`
+- DRAM/HBM: `8542321010` 和 `8542323000`
+- NAND/Flash: `8542321030`
+- SSD: `8471704010` 和 `8471709000`
+- Total memory: 默认拉取 `854232` 大类并合并 SSD 相关编码
 
-HBM 通常需要进一步确认韩国 HSK 10 位编码。建议先用 `854232` 做总量跟踪，再在 TRASS 中查询精确 10 位码后追加到命令参数。
+HBM、NAND 和 SSD 的精确 HSK 10 位编码可能随韩国海关口径调整。默认分类把 `8542323000` 作为 DRAM/HBM 相关复合结构芯片代理，把 `8542321030` 作为 NAND/Flash 代理，把 `8471709000` 作为当前 KCS 可查到的 SSD/其他存储设备代理；如果你在 TRASS 中确认了更精确编码，可以用 `--category name=hs1,hs2` 追加分类。
 
 ## 快速开始
 
@@ -58,6 +60,7 @@ python3 -m korean_memory_price price \
   --input data/kcs_memory_trade.csv \
   --out data/memory_unit_prices.csv \
   --index-out data/memory_price_index.csv \
+  --category-index-out data/memory_category_price_index.csv \
   --score-out data/memory_prosperity_score.csv
 ```
 
@@ -99,7 +102,18 @@ python3 -m korean_memory_price price \
   --input data/kcs_memory_trade.csv data/trass_memory_trade.csv \
   --out data/memory_unit_prices.csv \
   --index-out data/memory_price_index.csv \
+  --category-index-out data/memory_category_price_index.csv \
   --score-out data/memory_prosperity_score.csv
+```
+
+自定义分类示例：
+
+```bash
+python3 -m korean_memory_price run \
+  --start 202301 \
+  --end latest \
+  --category dram_hbm_plus=8542321010,8542323000 \
+  --outdir output/memory
 ```
 
 ## 定时查询
@@ -140,6 +154,23 @@ KCS 最终月度统计通常在每月 15 日左右更新上月数据。你可以
 
 `charts/memory_prosperity_score.png` 会显示存储景气度评分变化。
 
+## 分类价格趋势
+
+程序会额外输出 `memory_category_price_index.csv`，默认包含：
+
+- `dram_hbm`: DRAM/HBM 相关价格指数
+- `nand`: NAND/Flash 价格指数
+- `ssd`: SSD 价格指数
+- `total_memory`: Total memory 综合价格指数
+
+对应图表：
+
+- `charts/memory_category_price_trends.png`: 四个分类的价格指数趋势对比
+- `charts/memory_price_trend_dram_hbm.png`
+- `charts/memory_price_trend_nand.png`
+- `charts/memory_price_trend_ssd.png`
+- `charts/memory_price_trend_total_memory.png`
+
 ## 输出解释
 
 `memory_unit_prices.csv`:
@@ -156,6 +187,14 @@ KCS 最终月度统计通常在每月 15 日左右更新上月数据。你可以
 - `export_quantity_yoy_pct`: 出口数量同比
 - `export_value_yoy_pct`: 出口金额同比
 - `index_weight_method`: 当前为 `fixed_first_valid_export_value`，用来降低 HS 组合变化对“单价指数”的污染；组合和总收入变化由出口金额同比捕捉
+
+`memory_category_price_index.csv`:
+
+- `category`, `category_label`: 分类代码和显示名称
+- `unit_price_index`: 分类内 HS code 固定基期出口额加权后的价格指数
+- `unit_price_mom_1m_pct`, `unit_price_yoy_pct`: 分类价格环比和同比
+- `category_hs_patterns`: 该分类匹配的 HS/HSK 编码规则
+- `hs_codes`: 当月实际纳入计算的 HS/HSK 编码
 
 `memory_prosperity_score.csv`:
 

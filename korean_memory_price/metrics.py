@@ -3,6 +3,12 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Iterable
 
+from .categories import (
+    DEFAULT_MEMORY_CATEGORIES,
+    MemoryCategory,
+    category_hs_patterns,
+    matches_category,
+)
 from .models import TradeRecord
 from .utils import parse_number, pct_change, safe_div, shift_month, sort_by_month
 
@@ -46,8 +52,17 @@ INDEX_COLUMNS = [
     "export_weight_kg",
     "export_volume",
     "export_volume_basis",
+    "hs_codes",
     "hs_count",
     "index_weight_method",
+]
+
+
+CATEGORY_INDEX_COLUMNS = [
+    "category",
+    "category_label",
+    *INDEX_COLUMNS,
+    "category_hs_patterns",
 ]
 
 
@@ -167,6 +182,7 @@ def build_memory_index(unit_rows: Iterable[dict[str, object]]) -> list[dict[str,
                 "export_weight_kg": sum(parse_number(row.get("export_weight_kg")) or 0.0 for row in month_rows),
                 "export_volume": sum(parse_number(row.get("export_volume")) or 0.0 for row in month_rows),
                 "export_volume_basis": volume_basis,
+                "hs_codes": ";".join(sorted({str(row["hs_code"]) for row in month_rows})),
                 "hs_count": len({str(row["hs_code"]) for row in month_rows}),
                 "index_weight_method": "fixed_first_valid_export_value",
             }
@@ -177,6 +193,35 @@ def build_memory_index(unit_rows: Iterable[dict[str, object]]) -> list[dict[str,
     add_change_columns(index_rows, "memory_index", "memory_index")
     add_change_columns(index_rows, "export_value_usd", "export_value")
     return index_rows
+
+
+def build_category_memory_indexes(
+    unit_rows: Iterable[dict[str, object]],
+    categories: Iterable[MemoryCategory] | None = None,
+) -> list[dict[str, object]]:
+    rows = list(unit_rows)
+    category_rows: list[dict[str, object]] = []
+    for category in categories or DEFAULT_MEMORY_CATEGORIES:
+        filtered_rows = [
+            row
+            for row in rows
+            if matches_category(row.get("hs_code"), category)
+        ]
+        if not filtered_rows:
+            continue
+        for index_row in build_memory_index(filtered_rows):
+            category_rows.append(
+                {
+                    "category": category.key,
+                    "category_label": category.label,
+                    **index_row,
+                    "category_hs_patterns": category_hs_patterns(category),
+                }
+            )
+    return sorted(
+        category_rows,
+        key=lambda row: (str(row.get("category", "")), str(row.get("month", ""))),
+    )
 
 
 def _dedupe_trade_records(records: Iterable[TradeRecord]) -> list[TradeRecord]:
