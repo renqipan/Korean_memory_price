@@ -3,7 +3,7 @@ from datetime import date
 from tempfile import TemporaryDirectory
 from pathlib import Path
 
-from korean_memory_price.charts import render_memory_indicators_svg, render_memory_score_svg
+from korean_memory_price.charts import render_memory_indicators_png, render_memory_score_png
 from korean_memory_price.prosperity import build_prosperity_scores
 from korean_memory_price.utils import current_month, latest_final_month
 
@@ -76,7 +76,7 @@ class ProsperityTests(unittest.TestCase):
         self.assertEqual(latest_final_month(date(2026, 5, 16)), "202604")
         self.assertEqual(current_month(date(2026, 5, 14)), "2026-05")
 
-    def test_chart_renderers_write_svg(self):
+    def test_chart_renderers_write_png(self):
         rows = [
             {
                 "month": "2025-01",
@@ -96,12 +96,12 @@ class ProsperityTests(unittest.TestCase):
             },
         ]
         with TemporaryDirectory() as temp_dir:
-            indicator_path = Path(temp_dir) / "indicators.svg"
-            score_path = Path(temp_dir) / "score.svg"
-            render_memory_indicators_svg(rows, indicator_path)
-            render_memory_score_svg(rows, score_path)
-            self.assertIn("<svg", indicator_path.read_text(encoding="utf-8"))
-            self.assertIn("Memory Prosperity", score_path.read_text(encoding="utf-8"))
+            indicator_path = Path(temp_dir) / "indicators.png"
+            score_path = Path(temp_dir) / "score.png"
+            render_memory_indicators_png(rows, indicator_path)
+            render_memory_score_png(rows, score_path)
+            self.assertEqual(indicator_path.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+            self.assertEqual(score_path.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
 
 
 if __name__ == "__main__":

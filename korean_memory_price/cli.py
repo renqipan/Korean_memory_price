@@ -4,7 +4,7 @@ import argparse
 import os
 from pathlib import Path
 
-from .charts import render_memory_indicators_svg, render_memory_score_svg
+from .charts import render_memory_indicators_png, render_memory_score_png
 from .io_utils import read_trade_records, write_trade_records
 from .kcs import KCSClient
 from .metrics import (
@@ -52,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     price.add_argument("--score-out", help="Optional memory prosperity score CSV path.")
     price.set_defaults(func=cmd_price)
 
-    chart = subparsers.add_parser("chart", help="Render SVG charts for memory prosperity.")
+    chart = subparsers.add_parser("chart", help="Render PNG charts for memory prosperity.")
     chart.add_argument("--prosperity", required=True, help="memory_prosperity_score.csv path.")
     chart.add_argument("--outdir", required=True, help="Chart output directory.")
     chart.set_defaults(func=cmd_chart)
@@ -60,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = subparsers.add_parser("run", help="Run KCS fetch and memory prosperity calculation.")
     add_kcs_args(run)
     run.add_argument("--trass-file", action="append", default=[], help="Optional TRASS export file to merge.")
-    run.add_argument("--no-charts", action="store_true", help="Do not render SVG charts.")
+    run.add_argument("--no-charts", action="store_true", help="Do not render PNG charts.")
     run.add_argument("--outdir", required=True, help="Output directory.")
     run.set_defaults(func=cmd_run)
     return parser
@@ -130,10 +130,10 @@ def cmd_chart(args: argparse.Namespace) -> int:
     outdir = Path(args.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     prosperity_rows = _read_generic_csv(args.prosperity)
-    score_path = outdir / "memory_prosperity_score.svg"
-    indicator_path = outdir / "memory_indicators.svg"
-    render_memory_score_svg(prosperity_rows, score_path)
-    render_memory_indicators_svg(prosperity_rows, indicator_path)
+    score_path = outdir / "memory_prosperity_score.png"
+    indicator_path = outdir / "memory_indicators.png"
+    render_memory_score_png(prosperity_rows, score_path)
+    render_memory_indicators_png(prosperity_rows, indicator_path)
     print(f"Wrote memory prosperity score chart to {score_path}")
     print(f"Wrote indicator chart to {indicator_path}")
     return 0
@@ -164,8 +164,8 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     if not args.no_charts:
         chart_dir.mkdir(parents=True, exist_ok=True)
-        render_memory_score_svg(score_rows, chart_dir / "memory_prosperity_score.svg")
-        render_memory_indicators_svg(score_rows, chart_dir / "memory_indicators.svg")
+        render_memory_score_png(score_rows, chart_dir / "memory_prosperity_score.png")
+        render_memory_indicators_png(score_rows, chart_dir / "memory_indicators.png")
 
     print(f"Wrote trade data to {trade_path}")
     print(f"Wrote unit prices to {unit_path}")

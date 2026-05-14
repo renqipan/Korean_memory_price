@@ -1,2 +1,1 @@
-# No mandatory third-party dependencies.
-# The project uses only the Python standard library.
+CairoSVG>=2.7

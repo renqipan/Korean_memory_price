@@ -28,6 +28,12 @@ HBM 通常需要进一步确认韩国 HSK 10 位编码。建议先用 `854232` �
 
 ## 快速开始
 
+安装图表依赖：
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
 KCS OpenAPI 需要在韩国公共数据门户申请 service key，然后设置环境变量：
 
 ```bash
@@ -111,7 +117,7 @@ KCS 最终月度统计通常在每月 15 日左右更新上月数据。你可以
 - `unit_price_yoy_pct`: 出口单价同比
 - `unit_price_mom_1m_pct`: 出口单价环比
 
-`charts/memory_indicators.svg` 会显示这四个指标的变化。
+`charts/memory_indicators.png` 会显示这四个指标的变化。
 
 ## 存储景气度评分模型
 
@@ -132,7 +138,7 @@ KCS 最终月度统计通常在每月 15 日左右更新上月数据。你可以
 - `contraction`: >= 30
 - `downturn`: < 30
 
-`charts/memory_prosperity_score.svg` 会显示存储景气度评分变化。
+`charts/memory_prosperity_score.png` 会显示存储景气度评分变化。
 
 ## 输出解释
 
