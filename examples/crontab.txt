@@ -3,10 +3,10 @@
 # Set DATA_GO_KR_SERVICE_KEY in the cron environment or source it from a safe shell profile.
 
 # Weekly refresh, every Monday 08:10.
-10 8 * * 1 cd /Users/renqi/Documents/Codex/Korean_DRAM_price && /usr/bin/python3 -m korean_memory_price run --start 202301 --end latest --hs 8471704010 --hs 854232 --outdir output/memory_weekly
+10 8 * * 1 cd /Users/renqi/Documents/Codex/Korean_DRAM_price && /usr/bin/python3 -m korean_memory_price run --start 202301 --end latest --outdir output/memory_weekly
 
 # KCS brief release windows: 11th and 21st, 09:10.
-10 9 11,21 * * cd /Users/renqi/Documents/Codex/Korean_DRAM_price && /usr/bin/python3 -m korean_memory_price run --start 202301 --end latest --hs 8471704010 --hs 854232 --outdir output/memory_brief
+10 9 11,21 * * cd /Users/renqi/Documents/Codex/Korean_DRAM_price && /usr/bin/python3 -m korean_memory_price run --start 202301 --end latest --outdir output/memory_brief
 
 # Final monthly statistics, usually after the 15th. Run on the 16th, 09:10.
-10 9 16 * * cd /Users/renqi/Documents/Codex/Korean_DRAM_price && /usr/bin/python3 -m korean_memory_price run --start 202301 --end latest --hs 8471704010 --hs 854232 --outdir output/memory_monthly
+10 9 16 * * cd /Users/renqi/Documents/Codex/Korean_DRAM_price && /usr/bin/python3 -m korean_memory_price run --start 202301 --end latest --outdir output/memory_monthly

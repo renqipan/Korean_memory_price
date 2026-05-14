@@ -6,6 +6,7 @@ from typing import Iterable
 from .categories import (
     DEFAULT_MEMORY_CATEGORIES,
     MemoryCategory,
+    category_note,
     category_hs_patterns,
     matches_category,
 )
@@ -62,7 +63,9 @@ CATEGORY_INDEX_COLUMNS = [
     "category",
     "category_label",
     *INDEX_COLUMNS,
+    "category_export_value_share_pct",
     "category_hs_patterns",
+    "category_note",
 ]
 
 
@@ -201,6 +204,11 @@ def build_category_memory_indexes(
 ) -> list[dict[str, object]]:
     rows = list(unit_rows)
     category_rows: list[dict[str, object]] = []
+    total_value_by_month: dict[str, float] = defaultdict(float)
+    for row in rows:
+        month = str(row.get("month", ""))
+        if month:
+            total_value_by_month[month] += parse_number(row.get("export_value_usd")) or 0.0
     for category in categories or DEFAULT_MEMORY_CATEGORIES:
         filtered_rows = [
             row
@@ -210,12 +218,19 @@ def build_category_memory_indexes(
         if not filtered_rows:
             continue
         for index_row in build_memory_index(filtered_rows):
+            export_value = parse_number(index_row.get("export_value_usd"))
+            total_value = total_value_by_month.get(str(index_row.get("month")), 0.0)
             category_rows.append(
                 {
                     "category": category.key,
                     "category_label": category.label,
                     **index_row,
+                    "category_export_value_share_pct": safe_div(
+                        (export_value or 0.0) * 100.0,
+                        total_value,
+                    ),
                     "category_hs_patterns": category_hs_patterns(category),
+                    "category_note": category_note(category),
                 }
             )
     return sorted(

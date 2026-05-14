@@ -17,6 +17,9 @@ PALETTE = {
     "unit_price_mom_1m_pct": "#7c3aed",
     "memory_score": "#111827",
     "memory_score_3m_avg": "#dc2626",
+    "overall_memory_prosperity_score": "#111827",
+    "overall_memory_prosperity_3m_avg": "#dc2626",
+    "category_breadth_score": "#2563eb",
     "dram_hbm": "#b45309",
     "nand": "#2563eb",
     "ssd": "#0f766e",
@@ -77,6 +80,34 @@ def _render_memory_score_svg(
 
 def render_memory_score_png(rows: list[dict[str, object]], path: str | Path) -> None:
     _render_png_from_svg_renderer(_render_memory_score_svg, rows, path)
+
+
+def _render_overall_prosperity_svg(
+    rows: list[dict[str, object]],
+    path: str | Path,
+) -> None:
+    series = [
+        ("overall_memory_prosperity_score", "overall prosperity"),
+        ("overall_memory_prosperity_3m_avg", "3m average"),
+        ("category_breadth_score", "category breadth"),
+    ]
+    _render_line_chart(
+        rows=rows,
+        series=series,
+        path=path,
+        title="Korean Overall Memory Prosperity",
+        y_label="score",
+        zero_line=False,
+        y_min=0.0,
+        y_max=100.0,
+    )
+
+
+def render_overall_prosperity_png(
+    rows: list[dict[str, object]],
+    path: str | Path,
+) -> None:
+    _render_png_from_svg_renderer(_render_overall_prosperity_svg, rows, path)
 
 
 def render_category_price_trends_png(

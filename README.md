@@ -48,8 +48,6 @@ export DATA_GO_KR_SERVICE_KEY="你的 service key"
 python3 -m korean_memory_price kcs-fetch \
   --start 202301 \
   --end 202603 \
-  --hs 8471704010 \
-  --hs 854232 \
   --out data/kcs_memory_trade.csv
 ```
 
@@ -61,7 +59,8 @@ python3 -m korean_memory_price price \
   --out data/memory_unit_prices.csv \
   --index-out data/memory_price_index.csv \
   --category-index-out data/memory_category_price_index.csv \
-  --score-out data/memory_prosperity_score.csv
+  --score-out data/memory_prosperity_score.csv \
+  --overall-out data/memory_overall_prosperity.csv
 ```
 
 生成图表：
@@ -69,6 +68,8 @@ python3 -m korean_memory_price price \
 ```bash
 python3 -m korean_memory_price chart \
   --prosperity data/memory_prosperity_score.csv \
+  --category-index data/memory_category_price_index.csv \
+  --overall-prosperity data/memory_overall_prosperity.csv \
   --outdir charts
 ```
 
@@ -78,8 +79,6 @@ python3 -m korean_memory_price chart \
 python3 -m korean_memory_price run \
   --start 202301 \
   --end latest \
-  --hs 8471704010 \
-  --hs 854232 \
   --outdir output/memory
 ```
 
@@ -103,7 +102,8 @@ python3 -m korean_memory_price price \
   --out data/memory_unit_prices.csv \
   --index-out data/memory_price_index.csv \
   --category-index-out data/memory_category_price_index.csv \
-  --score-out data/memory_prosperity_score.csv
+  --score-out data/memory_prosperity_score.csv \
+  --overall-out data/memory_overall_prosperity.csv
 ```
 
 自定义分类示例：
@@ -115,6 +115,8 @@ python3 -m korean_memory_price run \
   --category dram_hbm_plus=8542321010,8542323000 \
   --outdir output/memory
 ```
+
+如果 `--category` 使用已有分类名，例如 `ssd=8471704010`，会覆盖默认 SSD 分类；如果使用新名称，则会追加一个新的分类。
 
 ## 定时查询
 
@@ -137,9 +139,9 @@ KCS 最终月度统计通常在每月 15 日左右更新上月数据。你可以
 
 `memory_prosperity_score.csv` 采用 0-100 分制。模型把出口金额同比作为收入确认项，把出口数量同比作为需求/出货代理，把出口单价同比作为价格周期主指标，把出口单价环比作为拐点和动量指标：
 
-- 出口金额同比，权重 20%，阈值 +/-50%
+- 出口金额同比，权重 15%，阈值 +/-50%
 - 出口数量同比，权重 25%，阈值 +/-35%
-- 出口单价同比，权重 35%，阈值 +/-50%
+- 出口单价同比，权重 40%，阈值 +/-50%
 - 出口单价环比，权重 20%，阈值 +/-12%
 
 每个指标会先按阈值归一到 -1 到 +1，再加权映射为 0-100。这样可以降低“出口金额 = 单价 x 数量”带来的双重计分，同时让内存周期中最关键的单价趋势占更高权重。
@@ -154,6 +156,16 @@ KCS 最终月度统计通常在每月 15 日左右更新上月数据。你可以
 
 `charts/memory_prosperity_score.png` 会显示存储景气度评分变化。
 
+## 内存总体繁荣指数
+
+`memory_overall_prosperity.csv` 定义一个 0-100 的总体繁荣指标：
+
+`overall_memory_prosperity_score = 70% * Total memory 景气分 + 30% * 分类扩散分`
+
+其中 Total memory 景气分来自出口金额同比、出口数量同比、出口单价同比和出口单价环比；分类扩散分来自 DRAM/HBM、NAND/Flash、SSD 的价格同比和环比，并按各分类出口额占比加权。这个设计让指数主要反映总量周期，同时检查景气是否从主导品类扩散到更多内存细分市场。
+
+`charts/memory_overall_prosperity.png` 会显示总体繁荣指数、3 个月均值和分类扩散分。
+
 ## 分类价格趋势
 
 程序会额外输出 `memory_category_price_index.csv`，默认包含：
@@ -166,6 +178,7 @@ KCS 最终月度统计通常在每月 15 日左右更新上月数据。你可以
 对应图表：
 
 - `charts/memory_category_price_trends.png`: 四个分类的价格指数趋势对比
+- `charts/memory_overall_prosperity.png`: 内存总体繁荣指数
 - `charts/memory_price_trend_dram_hbm.png`
 - `charts/memory_price_trend_nand.png`
 - `charts/memory_price_trend_ssd.png`
@@ -193,14 +206,25 @@ KCS 最终月度统计通常在每月 15 日左右更新上月数据。你可以
 - `category`, `category_label`: 分类代码和显示名称
 - `unit_price_index`: 分类内 HS code 固定基期出口额加权后的价格指数
 - `unit_price_mom_1m_pct`, `unit_price_yoy_pct`: 分类价格环比和同比
+- `category_export_value_share_pct`: 该分类出口额占当月全部纳入内存样本出口额的比例，用来识别小样本噪声
 - `category_hs_patterns`: 该分类匹配的 HS/HSK 编码规则
+- `category_note`: 分类口径提示；SSD 当前是存储设备代理口径，单月跳动需谨慎解释
 - `hs_codes`: 当月实际纳入计算的 HS/HSK 编码
+
+`memory_overall_prosperity.csv`:
+
+- `overall_memory_prosperity_score`: 0-100 的内存总体繁荣指数
+- `overall_memory_prosperity_3m_avg`: 总体繁荣指数 3 个月均值
+- `category_breadth_score`: 细分品类扩散分
+- `category_positive_share_pct`: 价格同比和环比同时为正的分类出口额占比
+- `dominant_category`, `dominant_category_share_pct`: 当月主导分类及其出口额占比
 
 `memory_prosperity_score.csv`:
 
 - `memory_score`, `memory_regime`: 存储景气度评分和分档
 - `score_confidence`: 当月四个指标中可用指标占比，早期不足 12 个月时通常较低
 - `value_score`, `volume_score`, `price_score`, `momentum_score`: 四个子评分，便于判断景气度来自价格、数量、收入还是短期动量
+- `price_volume_confirmation`: 价格同比和数量同比是否相互确认，例如 `price_and_volume_up` 或 `price_up_volume_weak`
 - `memory_score_3m_avg`: 3 个月平滑景气度，用来过滤单月噪声
 - `score_mom_1m`, `score_mom_3m`: 景气度评分的 1 个月和 3 个月变化
 - `cycle_phase`: 对当前周期状态的文字分类，例如 `broad_based_boom`、`price_led_boom`、`recovery`、`cooling`、`contraction`

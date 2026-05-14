@@ -106,6 +106,11 @@ class MetricsTests(unittest.TestCase):
             round(by_category_month[("total_memory", "2024-02")]["unit_price_index"], 6),
             185.714286,
         )
+        self.assertEqual(
+            round(by_category_month[("ssd", "2024-02")]["category_export_value_share_pct"], 6),
+            41.025641,
+        )
+        self.assertIn("proxy", by_category_month[("ssd", "2024-02")]["category_note"])
         self.assertIn("8542321020", by_category_month[("total_memory", "2024-02")]["hs_codes"])
 
     def test_custom_category_replaces_default_category_key(self):

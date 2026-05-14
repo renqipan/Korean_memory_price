@@ -10,6 +10,7 @@ from .charts import (
     render_category_price_trends_png,
     render_memory_indicators_png,
     render_memory_score_png,
+    render_overall_prosperity_png,
 )
 from .io_utils import read_trade_records, write_trade_records
 from .kcs import KCSClient
@@ -22,7 +23,12 @@ from .metrics import (
     build_unit_price_rows,
     latest_summary,
 )
-from .prosperity import PROSPERITY_COLUMNS, build_prosperity_scores
+from .prosperity import (
+    OVERALL_PROSPERITY_COLUMNS,
+    PROSPERITY_COLUMNS,
+    build_overall_prosperity_index,
+    build_prosperity_scores,
+)
 from .trass import load_trass_export
 from .utils import month_to_yymm, write_csv_rows
 
@@ -59,12 +65,14 @@ def build_parser() -> argparse.ArgumentParser:
     price.add_argument("--index-out", required=True, help="Composite memory index CSV path.")
     price.add_argument("--score-out", help="Optional memory prosperity score CSV path.")
     price.add_argument("--category-index-out", help="Optional category-level price index CSV path.")
+    price.add_argument("--overall-out", help="Optional overall memory prosperity CSV path.")
     add_category_args(price)
     price.set_defaults(func=cmd_price)
 
     chart = subparsers.add_parser("chart", help="Render PNG charts for memory prosperity.")
     chart.add_argument("--prosperity", required=True, help="memory_prosperity_score.csv path.")
     chart.add_argument("--category-index", help="memory_category_price_index.csv path.")
+    chart.add_argument("--overall-prosperity", help="memory_overall_prosperity.csv path.")
     chart.add_argument("--outdir", required=True, help="Chart output directory.")
     chart.set_defaults(func=cmd_chart)
 
@@ -132,12 +140,15 @@ def cmd_price(args: argparse.Namespace) -> int:
     index_rows = build_memory_index(unit_rows)
     category_rows = build_category_memory_indexes(unit_rows, parse_categories(args))
     score_rows = build_prosperity_scores(index_rows)
+    overall_rows = build_overall_prosperity_index(score_rows, category_rows)
     write_csv_rows(unit_rows, args.out, UNIT_PRICE_COLUMNS)
     write_csv_rows(index_rows, args.index_out, INDEX_COLUMNS)
     if args.category_index_out:
         write_csv_rows(category_rows, args.category_index_out, CATEGORY_INDEX_COLUMNS)
     if args.score_out:
         write_csv_rows(score_rows, args.score_out, PROSPERITY_COLUMNS)
+    if args.overall_out:
+        write_csv_rows(overall_rows, args.overall_out, OVERALL_PROSPERITY_COLUMNS)
     summary = latest_summary(index_rows)
     print(f"Wrote {len(unit_rows)} unit price rows to {args.out}")
     print(f"Wrote {len(index_rows)} memory index rows to {args.index_out}")
@@ -145,6 +156,8 @@ def cmd_price(args: argparse.Namespace) -> int:
         print(f"Wrote {len(category_rows)} category price index rows to {args.category_index_out}")
     if args.score_out:
         print(f"Wrote {len(score_rows)} memory prosperity score rows to {args.score_out}")
+    if args.overall_out:
+        print(f"Wrote {len(overall_rows)} overall memory prosperity rows to {args.overall_out}")
     if summary:
         print(
             "Latest memory index: "
@@ -165,6 +178,11 @@ def cmd_chart(args: argparse.Namespace) -> int:
     render_memory_indicators_png(prosperity_rows, indicator_path)
     print(f"Wrote memory prosperity score chart to {score_path}")
     print(f"Wrote indicator chart to {indicator_path}")
+    if args.overall_prosperity:
+        overall_rows = _read_generic_csv(args.overall_prosperity)
+        overall_path = outdir / "memory_overall_prosperity.png"
+        render_overall_prosperity_png(overall_rows, overall_path)
+        print(f"Wrote overall memory prosperity chart to {overall_path}")
     if args.category_index:
         category_rows = _read_generic_csv(args.category_index)
         category_trends_path = outdir / "memory_category_price_trends.png"
@@ -191,6 +209,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     index_path = outdir / "memory_price_index.csv"
     category_index_path = outdir / "memory_category_price_index.csv"
     score_path = outdir / "memory_prosperity_score.csv"
+    overall_path = outdir / "memory_overall_prosperity.csv"
     chart_dir = outdir / "charts"
 
     write_trade_records(all_records, trade_path)
@@ -198,14 +217,17 @@ def cmd_run(args: argparse.Namespace) -> int:
     index_rows = build_memory_index(unit_rows)
     category_rows = build_category_memory_indexes(unit_rows, parse_categories(args))
     score_rows = build_prosperity_scores(index_rows)
+    overall_rows = build_overall_prosperity_index(score_rows, category_rows)
     write_csv_rows(unit_rows, unit_path, UNIT_PRICE_COLUMNS)
     write_csv_rows(index_rows, index_path, INDEX_COLUMNS)
     write_csv_rows(category_rows, category_index_path, CATEGORY_INDEX_COLUMNS)
     write_csv_rows(score_rows, score_path, PROSPERITY_COLUMNS)
+    write_csv_rows(overall_rows, overall_path, OVERALL_PROSPERITY_COLUMNS)
 
     if not args.no_charts:
         chart_dir.mkdir(parents=True, exist_ok=True)
         render_memory_score_png(score_rows, chart_dir / "memory_prosperity_score.png")
+        render_overall_prosperity_png(overall_rows, chart_dir / "memory_overall_prosperity.png")
         render_memory_indicators_png(score_rows, chart_dir / "memory_indicators.png")
         render_category_price_trends_png(category_rows, chart_dir / "memory_category_price_trends.png")
         for category in sorted({str(row.get("category")) for row in category_rows if row.get("category")}):
@@ -220,6 +242,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"Wrote memory index to {index_path}")
     print(f"Wrote category price index to {category_index_path}")
     print(f"Wrote memory prosperity score to {score_path}")
+    print(f"Wrote overall memory prosperity to {overall_path}")
     if not args.no_charts:
         print(f"Wrote charts to {chart_dir}")
     return 0

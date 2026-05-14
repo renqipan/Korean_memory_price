@@ -13,6 +13,7 @@ class MemoryCategory:
     label: str
     hs_patterns: tuple[str, ...]
     include_all: bool = False
+    note: str = ""
 
 
 DEFAULT_MEMORY_CATEGORIES = [
@@ -20,22 +21,26 @@ DEFAULT_MEMORY_CATEGORIES = [
         key="dram_hbm",
         label="DRAM/HBM",
         hs_patterns=("8542321010", "8542323000"),
+        note="DRAM plus stacked/compound memory proxy; confirm exact HBM HSK codes in TRASS when available.",
     ),
     MemoryCategory(
         key="nand",
         label="NAND/Flash",
         hs_patterns=("8542321030",),
+        note="Flash memory proxy for NAND exports.",
     ),
     MemoryCategory(
         key="ssd",
         label="SSD",
         hs_patterns=("8471704010", "8471709000"),
+        note="SSD/storage-device proxy; current KCS data may report only 8471709000, so treat small-volume moves cautiously.",
     ),
     MemoryCategory(
         key="total_memory",
         label="Total memory",
         hs_patterns=(),
         include_all=True,
+        note="All fetched memory-related HS/HSK records.",
     ),
 ]
 
@@ -91,6 +96,10 @@ def category_hs_patterns(category: MemoryCategory) -> str:
     if category.include_all:
         return "*"
     return ";".join(category.hs_patterns)
+
+
+def category_note(category: MemoryCategory) -> str:
+    return category.note
 
 
 def _matches_hs_pattern(hs_code: str, pattern: str) -> bool:
