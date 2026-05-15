@@ -30,10 +30,11 @@ from .prosperity import (
     build_prosperity_scores,
 )
 from .trass import load_trass_export
-from .utils import month_to_yymm, write_csv_rows
+from .utils import month_to_yymm, parse_number, write_csv_rows
 
 
 DEFAULT_HS_CODES = DEFAULT_FETCH_HS_CODES
+CATEGORY_GROWTH_SUMMARY_CATEGORIES = ("dram_hbm", "nand")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -165,6 +166,7 @@ def cmd_price(args: argparse.Namespace) -> int:
             f"3m={summary.get('memory_index_mom_3m_pct')} "
             f"yoy={summary.get('memory_index_yoy_pct')}"
         )
+    print_latest_category_growth_summary(category_rows)
     return 0
 
 
@@ -245,6 +247,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"Wrote overall memory prosperity to {overall_path}")
     if not args.no_charts:
         print(f"Wrote charts to {chart_dir}")
+    print_latest_category_growth_summary(category_rows)
     return 0
 
 
@@ -285,6 +288,55 @@ def resolve_end_yymm(
     if str(end).strip().lower() != "latest":
         return month_to_yymm(end)
     return client.find_latest_available_month(hs_codes, start_month=start_yymm)
+
+
+def print_latest_category_growth_summary(category_rows: list[dict[str, object]]) -> None:
+    for line in format_latest_category_growth_lines(category_rows):
+        print(line)
+
+
+def format_latest_category_growth_lines(
+    category_rows: list[dict[str, object]],
+    month_count: int = 2,
+) -> list[str]:
+    rows_by_key = {
+        (str(row.get("month")), str(row.get("category"))): row
+        for row in category_rows
+    }
+    labels_by_category = {
+        str(row.get("category")): str(row.get("category_label") or row.get("category"))
+        for row in category_rows
+        if row.get("category")
+    }
+    months = sorted(
+        {
+            str(row.get("month"))
+            for row in category_rows
+            if str(row.get("category")) in CATEGORY_GROWTH_SUMMARY_CATEGORIES
+            and row.get("month")
+        }
+    )
+    if not months:
+        return []
+    lines = ["Latest DRAM/HBM and NAND unit price growth:"]
+    for month in months[-month_count:]:
+        lines.append(f"  {month}:")
+        for category in CATEGORY_GROWTH_SUMMARY_CATEGORIES:
+            label = labels_by_category.get(category, category)
+            row = rows_by_key.get((month, category), {})
+            lines.append(
+                f"    {label}: "
+                f"YoY {_format_pct(row.get('unit_price_yoy_pct'))}, "
+                f"MoM {_format_pct(row.get('unit_price_mom_1m_pct'))}"
+            )
+    return lines
+
+
+def _format_pct(value: object) -> str:
+    number = parse_number(value)
+    if number is None:
+        return "N/A"
+    return f"{number:+.2f}%"
 
 
 def _read_generic_csv(path: str | Path) -> list[dict[str, str]]:

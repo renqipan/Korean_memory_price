@@ -84,6 +84,8 @@ python3 -m korean_memory_price run \
 
 `--end latest` 会在每次运行时先尝试当前日历月，再逐月向前回退，直到 KCS OpenAPI 返回可用出口记录。这样当 KCS 更新到本月或上月时，程序会自动纳入最新月份；如果当前月尚未发布，则自动使用 KCS 实际可查到的最新月份。
 
+程序运行结束时会在终端打印最新两个月 DRAM/HBM 和 NAND/Flash 的单价指数同比、环比变化，方便快速检查核心内存价格动量。
+
 ## 导入 TRASS 导出文件
 
 从 TRASS 的 `Trade Statistics` 或 `Export/Import by Item` 按 HS code 查询后导出 CSV/XLSX：
