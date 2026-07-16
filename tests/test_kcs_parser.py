@@ -53,6 +53,10 @@ class KCSParserTests(unittest.TestCase):
         self.assertEqual(chunks[1], ("202401", "202412"))
         self.assertEqual(chunks[-1], ("202601", "202603"))
 
+    def test_iter_yymm_chunks_rejects_reversed_range(self):
+        with self.assertRaisesRegex(ValueError, "must not be after"):
+            _iter_yymm_chunks("202603", "202301")
+
 
 if __name__ == "__main__":
     unittest.main()

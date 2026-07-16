@@ -267,6 +267,10 @@ def fetch_kcs_records(args: argparse.Namespace):
     )
     start_yymm = month_to_yymm(args.start)
     end_yymm = resolve_end_yymm(args.end, client, hs_codes, start_yymm)
+    if start_yymm > end_yymm:
+        raise SystemExit(
+            f"Start month {start_yymm} must not be after end month {end_yymm}."
+        )
     if str(args.end).strip().lower() == "latest":
         print(f"Resolved latest available KCS month: {end_yymm}")
     return client.fetch_many(start_yymm, end_yymm, hs_codes)

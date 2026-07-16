@@ -177,6 +177,10 @@ def _iter_yymm_chunks(
 ) -> list[tuple[str, str]]:
     start_month = yymm_to_month(start_yymm)
     end_month = yymm_to_month(end_yymm)
+    if start_month > end_month:
+        raise ValueError(
+            f"start month {start_yymm} must not be after end month {end_yymm}"
+        )
     chunks: list[tuple[str, str]] = []
     current = start_month
     while current <= end_month:

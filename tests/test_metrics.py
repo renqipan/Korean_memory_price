@@ -27,6 +27,40 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(round(index_rows[1]["unit_price_mom_1m_pct"], 6), 50.0)
         self.assertEqual(round(index_rows[1]["memory_index_mom_1m_pct"], 6), 50.0)
 
+    def test_bilateral_growth_uses_prior_export_value_weights(self):
+        records = [
+            TradeRecord(
+                month="2024-01",
+                hs_code="8542321010",
+                export_value_usd=100,
+                export_weight_kg=10,
+            ),
+            TradeRecord(
+                month="2024-01",
+                hs_code="8542323000",
+                export_value_usd=400,
+                export_weight_kg=20,
+            ),
+            TradeRecord(
+                month="2024-02",
+                hs_code="8542321010",
+                export_value_usd=200,
+                export_weight_kg=10,
+            ),
+            TradeRecord(
+                month="2024-02",
+                hs_code="8542323000",
+                export_value_usd=200,
+                export_weight_kg=20,
+            ),
+        ]
+
+        index_rows = build_memory_index(build_unit_price_rows(records))
+
+        # Price relatives are 2.0 and 0.5, weighted by prior values 100 and 400.
+        self.assertAlmostEqual(index_rows[1]["unit_price_mom_1m_pct"], -20.0)
+        self.assertAlmostEqual(index_rows[1]["unit_price_index"], 80.0)
+
     def test_prefers_trass_quantity_without_double_counting_kcs(self):
         records = [
             TradeRecord(
@@ -61,6 +95,28 @@ class MetricsTests(unittest.TestCase):
         index_rows = build_memory_index(unit_rows)
         self.assertEqual(index_rows[0]["export_value_usd"], 1000.0)
         self.assertEqual(round(index_rows[1]["unit_price_yoy_pct"], 6), 50.0)
+
+    def test_identical_source_records_are_not_double_counted(self):
+        record = TradeRecord(
+            month="2024-01",
+            hs_code="8542321010",
+            export_value_usd=1000,
+            export_weight_kg=10,
+            source="kcs:data-go-kr",
+        )
+        duplicate = TradeRecord(
+            month="2024-01",
+            hs_code="8542321010",
+            export_value_usd=1000,
+            export_weight_kg=10,
+            source="kcs:data-go-kr",
+        )
+
+        unit_rows = build_unit_price_rows([record, duplicate])
+
+        self.assertEqual(len(unit_rows), 1)
+        self.assertEqual(unit_rows[0]["export_value_usd"], 1000.0)
+        self.assertEqual(unit_rows[0]["export_weight_kg"], 10.0)
 
     def test_uses_stable_hs_basis_when_quantity_is_sparse(self):
         records = [
@@ -118,6 +174,54 @@ class MetricsTests(unittest.TestCase):
         by_key = {category.key: category for category in categories}
         self.assertEqual(by_key["nand"].hs_patterns, ("123456",))
         self.assertEqual(len([category for category in categories if category.key == "nand"]), 1)
+
+    def test_price_growth_is_independent_of_requested_start_month(self):
+        records = []
+        for month_number in range(1, 19):
+            year = 2024 + (month_number - 1) // 12
+            month = (month_number - 1) % 12 + 1
+            month_label = f"{year:04d}-{month:02d}"
+            records.extend(
+                [
+                    TradeRecord(
+                        month=month_label,
+                        hs_code="8542321010",
+                        export_value_usd=(100 + month_number * 8) * (10 + month_number),
+                        export_weight_kg=10 + month_number,
+                    ),
+                    TradeRecord(
+                        month=month_label,
+                        hs_code="8542323000",
+                        export_value_usd=(300 + month_number * 3) * (40 - month_number),
+                        export_weight_kg=40 - month_number,
+                    ),
+                ]
+            )
+
+        full_rows = build_category_memory_indexes(build_unit_price_rows(records))
+        later_records = [record for record in records if record.month >= "2024-04"]
+        later_rows = build_category_memory_indexes(build_unit_price_rows(later_records))
+        full_latest = next(
+            row for row in full_rows
+            if row["category"] == "dram_hbm" and row["month"] == "2025-06"
+        )
+        later_latest = next(
+            row for row in later_rows
+            if row["category"] == "dram_hbm" and row["month"] == "2025-06"
+        )
+
+        self.assertAlmostEqual(
+            full_latest["unit_price_mom_1m_pct"],
+            later_latest["unit_price_mom_1m_pct"],
+        )
+        self.assertAlmostEqual(
+            full_latest["unit_price_yoy_pct"],
+            later_latest["unit_price_yoy_pct"],
+        )
+        self.assertEqual(
+            full_latest["index_weight_method"],
+            "chain_linked_prior_period_export_value",
+        )
 
 
 if __name__ == "__main__":

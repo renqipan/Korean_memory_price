@@ -80,6 +80,21 @@ class ProsperityTests(unittest.TestCase):
         self.assertIsNone(scores[2]["score_mom_1m"])
         self.assertEqual(scores[2]["score_mom_3m"], -50.0)
 
+    def test_score_requires_at_least_three_indicators(self):
+        scores = build_prosperity_scores(
+            [
+                {
+                    "month": "2025-01",
+                    "unit_price_yoy_pct": 50,
+                    "unit_price_mom_1m_pct": 12,
+                }
+            ]
+        )
+
+        self.assertIsNone(scores[0]["memory_score"])
+        self.assertEqual(scores[0]["memory_regime"], "insufficient_data")
+        self.assertEqual(scores[0]["score_confidence"], 0.5)
+
     def test_latest_final_month(self):
         self.assertEqual(latest_final_month(date(2026, 5, 14)), "202603")
         self.assertEqual(latest_final_month(date(2026, 5, 16)), "202604")
@@ -118,6 +133,24 @@ class ProsperityTests(unittest.TestCase):
         self.assertEqual(round(overall_rows[0]["overall_memory_prosperity_score"], 6), 83.0)
         self.assertEqual(overall_rows[0]["category_positive_share_pct"], 80.0)
         self.assertEqual(overall_rows[1]["overall_score_mom_1m"], -41.0)
+
+    def test_overall_score_requires_total_score_and_complete_category_signal(self):
+        prosperity_rows = [{"month": "2025-01", "memory_score": None}]
+        category_rows = [
+            {
+                "month": "2025-01",
+                "category": "dram_hbm",
+                "unit_price_mom_1m_pct": 12,
+                "category_export_value_share_pct": 100,
+            }
+        ]
+
+        overall = build_overall_prosperity_index(prosperity_rows, category_rows)[0]
+
+        self.assertIsNone(overall["category_breadth_score"])
+        self.assertEqual(overall["category_valid_count"], 0)
+        self.assertIsNone(overall["overall_memory_prosperity_score"])
+        self.assertEqual(overall["overall_memory_regime"], "insufficient_data")
 
     def test_chart_renderers_write_png(self):
         rows = [

@@ -6,7 +6,7 @@
 
 - 出口单价 = 出口金额 USD / 出口重量 kg
 - 如果 TRASS 导出文件包含出口数量，则额外计算 出口金额 USD / 出口数量
-- 用每个 HS code 的单价指数做固定基期出口额加权合成指数
+- 用相邻月份共同存在的 HS code、按上期出口额加权，构造链式出口单价指数
 - 用出口金额同比、出口数量同比、出口单价同比、出口单价环比合成 0-100 的“存储景气度评分”
 
 ## 数据来源
@@ -146,7 +146,7 @@ KCS 最终月度统计通常在每月 15 日左右更新上月数据。你可以
 - 出口单价同比，权重 40%，阈值 +/-50%
 - 出口单价环比，权重 20%，阈值 +/-12%
 
-每个指标会先按阈值归一到 -1 到 +1，再加权映射为 0-100。这样可以降低“出口金额 = 单价 x 数量”带来的双重计分，同时让内存周期中最关键的单价趋势占更高权重。
+每个指标会先按阈值归一到 -1 到 +1，再加权映射为 0-100。这样可以降低“出口金额 = 单价 x 数量”带来的双重计分，同时让内存周期中最关键的单价趋势占更高权重。至少需要四项指标中的三项有效才会生成景气分，否则标记为 `insufficient_data`。
 
 分档：
 
@@ -164,7 +164,7 @@ KCS 最终月度统计通常在每月 15 日左右更新上月数据。你可以
 
 `overall_memory_prosperity_score = 70% * Total memory 景气分 + 30% * 分类扩散分`
 
-其中 Total memory 景气分来自出口金额同比、出口数量同比、出口单价同比和出口单价环比；分类扩散分来自 DRAM/HBM、NAND/Flash、SSD 的价格同比和环比，并按各分类出口额占比加权。这个设计让指数主要反映总量周期，同时检查景气是否从主导品类扩散到更多内存细分市场。
+其中 Total memory 景气分来自出口金额同比、出口数量同比、出口单价同比和出口单价环比；分类扩散分要求各分类的价格同比和环比同时可用，再按各分类出口额占比加权。总体分必须有 Total memory 景气分才会生成；分类数据缺失时则回退为 Total memory 景气分。这个设计让指数主要反映总量周期，同时检查景气是否从主导品类扩散到更多内存细分市场。
 
 `charts/memory_overall_prosperity.png` 会显示总体繁荣指数、3 个月均值和分类扩散分。
 
@@ -196,17 +196,17 @@ KCS 最终月度统计通常在每月 15 日左右更新上月数据。你可以
 
 `memory_price_index.csv`:
 
-- `unit_price_index`: 每个 HS code 以首个有效月份为 100 后，按首个有效出口额固定加权的出口单价指数
-- `export_quantity_index`: 每个 HS code 以首个有效月份为 100 后，按首个有效出口额固定加权的出口数量指数
+- `unit_price_index`: 首个有效月份为 100、按上期出口额加权逐月链接的出口单价指数；同比和环比直接按两个比较期的共同 HS code 计算，因此改变 `--start` 只会改变指数基准水平，不会改变重叠月份的同比和环比
+- `export_quantity_index`: 首个有效月份为 100、按上期出口额加权逐月链接的出口数量指数
 - `unit_price_mom_1m_pct`, `unit_price_yoy_pct`: 出口单价环比和同比
 - `export_quantity_yoy_pct`: 出口数量同比
 - `export_value_yoy_pct`: 出口金额同比
-- `index_weight_method`: 当前为 `fixed_first_valid_export_value`，用来降低 HS 组合变化对“单价指数”的污染；组合和总收入变化由出口金额同比捕捉
+- `index_weight_method`: 当前为 `chain_linked_prior_period_export_value`；每个月只比较相邻两期共同存在的 HS code，并以上期出口额加权，避免请求起始月份改变最新价格涨幅
 
 `memory_category_price_index.csv`:
 
 - `category`, `category_label`: 分类代码和显示名称
-- `unit_price_index`: 分类内 HS code 固定基期出口额加权后的价格指数
+- `unit_price_index`: 分类内 HS code 按上期出口额加权后的链式价格指数
 - `unit_price_mom_1m_pct`, `unit_price_yoy_pct`: 分类价格环比和同比
 - `category_export_value_share_pct`: 该分类出口额占当月全部纳入内存样本出口额的比例，用来识别小样本噪声
 - `category_hs_patterns`: 该分类匹配的 HS/HSK 编码规则

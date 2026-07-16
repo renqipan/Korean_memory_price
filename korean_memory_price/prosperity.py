@@ -52,9 +52,9 @@ OVERALL_PROSPERITY_COLUMNS = [
 ]
 
 
-MODEL_VERSION = "memory-prosperity-v3"
+MODEL_VERSION = "memory-prosperity-v4"
 
-OVERALL_MODEL_VERSION = "overall-memory-prosperity-v1"
+OVERALL_MODEL_VERSION = "overall-memory-prosperity-v2"
 
 OVERALL_SCORE_WEIGHT = 0.70
 CATEGORY_BREADTH_WEIGHT = 0.30
@@ -78,7 +78,7 @@ MODEL_THRESHOLDS = {
 
 def build_prosperity_scores(
     index_rows: list[dict[str, object]],
-    min_indicators: int = 2,
+    min_indicators: int = 3,
 ) -> list[dict[str, object]]:
     score_rows: list[dict[str, object]] = []
     for row in sorted(index_rows, key=lambda item: str(item.get("month", ""))):
@@ -277,15 +277,9 @@ def _category_cycle_score(row: dict[str, object]) -> float | None:
         row.get("unit_price_mom_1m_pct"),
         MODEL_THRESHOLDS["unit_price_mom_1m_pct"],
     )
-    components: list[tuple[float, float]] = []
-    if yoy_component is not None:
-        components.append((yoy_component, 0.70))
-    if mom_component is not None:
-        components.append((mom_component, 0.30))
-    if not components:
+    if yoy_component is None or mom_component is None:
         return None
-    total_weight = sum(weight for _, weight in components)
-    signal = sum(component * weight for component, weight in components) / total_weight
+    signal = yoy_component * 0.70 + mom_component * 0.30
     return _component_score(signal)
 
 
@@ -303,7 +297,7 @@ def _combine_overall_score(
     category_score: float | None,
 ) -> float | None:
     if total_score is None:
-        return category_score
+        return None
     if category_score is None:
         return total_score
     return (

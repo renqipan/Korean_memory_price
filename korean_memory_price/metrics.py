@@ -120,60 +120,34 @@ def build_memory_index(unit_rows: Iterable[dict[str, object]]) -> list[dict[str,
     ]
     rows.sort(key=lambda row: (str(row["hs_code"]), str(row["month"])))
 
-    base_price_by_hs: dict[str, float] = {}
-    base_volume_by_hs: dict[str, float] = {}
-    base_weight_by_hs: dict[str, float] = {}
-    for row in rows:
-        hs_code = str(row["hs_code"])
-        price = parse_number(row.get("unit_price_metric"))
-        volume = parse_number(row.get("export_volume"))
-        export_value = parse_number(row.get("export_value_usd"))
-        if price is not None and price > 0 and hs_code not in base_price_by_hs:
-            base_price_by_hs[hs_code] = price
-        if volume is not None and volume > 0 and hs_code not in base_volume_by_hs:
-            base_volume_by_hs[hs_code] = volume
-        if export_value is not None and export_value > 0 and hs_code not in base_weight_by_hs:
-            base_weight_by_hs[hs_code] = export_value
-
     monthly: dict[str, list[dict[str, object]]] = defaultdict(list)
     for row in rows:
-        hs_code = str(row["hs_code"])
         price = parse_number(row.get("unit_price_metric"))
-        volume = parse_number(row.get("export_volume"))
-        base_price = base_price_by_hs.get(hs_code)
-        base_volume = base_volume_by_hs.get(hs_code)
-        if price is None or not base_price:
+        if price is None or price <= 0:
             continue
-        indexed = dict(row)
-        indexed["hs_price_index"] = price / base_price * 100.0
-        if volume is not None and base_volume:
-            indexed["hs_volume_index"] = volume / base_volume * 100.0
-        monthly[str(row["month"])].append(indexed)
+        monthly[str(row["month"])].append(dict(row))
 
     index_rows: list[dict[str, object]] = []
+    previous_month_rows: list[dict[str, object]] | None = None
+    previous_price_index = 100.0
+    previous_volume_index = 100.0
     for month, month_rows in sorted(monthly.items()):
-        weights = [
-            base_weight_by_hs.get(str(row["hs_code"]), 0.0)
-            for row in month_rows
-        ]
-        if sum(weights) <= 0:
-            weights = [1.0 for _ in month_rows]
-        weighted_index = sum(
-            (parse_number(row.get("hs_price_index")) or 0.0) * weight
-            for row, weight in zip(month_rows, weights)
-        ) / sum(weights)
-        volume_index_values = [
-            (parse_number(row.get("hs_volume_index")), weight)
-            for row, weight in zip(month_rows, weights)
-            if parse_number(row.get("hs_volume_index")) is not None
-        ]
-        weighted_volume_index = None
-        if volume_index_values:
-            total_volume_weight = sum(weight for _, weight in volume_index_values)
-            if total_volume_weight > 0:
-                weighted_volume_index = sum(
-                    (value or 0.0) * weight for value, weight in volume_index_values
-                ) / total_volume_weight
+        if previous_month_rows is None:
+            weighted_index = 100.0
+            weighted_volume_index = 100.0
+        else:
+            price_ratio = _bilateral_price_ratio(month_rows, previous_month_rows)
+            weighted_index = (
+                previous_price_index * price_ratio
+                if price_ratio is not None
+                else previous_price_index
+            )
+            volume_ratio = _bilateral_volume_ratio(month_rows, previous_month_rows)
+            weighted_volume_index = (
+                previous_volume_index * volume_ratio
+                if volume_ratio is not None
+                else previous_volume_index
+            )
         volume_basis = _common_basis(month_rows)
         index_rows.append(
             {
@@ -187,15 +161,103 @@ def build_memory_index(unit_rows: Iterable[dict[str, object]]) -> list[dict[str,
                 "export_volume_basis": volume_basis,
                 "hs_codes": ";".join(sorted({str(row["hs_code"]) for row in month_rows})),
                 "hs_count": len({str(row["hs_code"]) for row in month_rows}),
-                "index_weight_method": "fixed_first_valid_export_value",
+                "index_weight_method": "chain_linked_prior_period_export_value",
             }
         )
+        previous_month_rows = month_rows
+        previous_price_index = weighted_index
+        previous_volume_index = weighted_volume_index
 
-    add_change_columns(index_rows, "unit_price_index", "unit_price")
-    add_change_columns(index_rows, "export_quantity_index", "export_quantity")
-    add_change_columns(index_rows, "memory_index", "memory_index")
+    add_bilateral_change_columns(
+        index_rows, monthly, "unit_price_metric", "unit_price_basis", "unit_price"
+    )
+    add_bilateral_change_columns(
+        index_rows, monthly, "export_volume", "export_volume_basis", "export_quantity"
+    )
+    add_bilateral_change_columns(
+        index_rows, monthly, "unit_price_metric", "unit_price_basis", "memory_index"
+    )
     add_change_columns(index_rows, "export_value_usd", "export_value")
     return index_rows
+
+
+def _bilateral_price_ratio(
+    current_rows: list[dict[str, object]],
+    previous_rows: list[dict[str, object]],
+) -> float | None:
+    """Return a prior-period-value-weighted price ratio for common HS codes.
+
+    Using only the two adjacent periods makes every chain link independent of
+    the requested history start.  This avoids changing current growth rates
+    merely because a different first month supplied different fixed weights.
+    """
+    return _bilateral_metric_ratio(
+        current_rows,
+        previous_rows,
+        metric_field="unit_price_metric",
+        basis_field="unit_price_basis",
+    )
+
+
+def _bilateral_volume_ratio(
+    current_rows: list[dict[str, object]],
+    previous_rows: list[dict[str, object]],
+) -> float | None:
+    return _bilateral_metric_ratio(
+        current_rows,
+        previous_rows,
+        metric_field="export_volume",
+        basis_field="export_volume_basis",
+    )
+
+
+def _bilateral_metric_ratio(
+    current_rows: list[dict[str, object]],
+    previous_rows: list[dict[str, object]],
+    metric_field: str,
+    basis_field: str,
+) -> float | None:
+    current_by_hs = {str(row.get("hs_code")): row for row in current_rows}
+    previous_by_hs = {str(row.get("hs_code")): row for row in previous_rows}
+    relatives: list[tuple[float, float]] = []
+    for hs_code in sorted(current_by_hs.keys() & previous_by_hs.keys()):
+        current = current_by_hs[hs_code]
+        previous = previous_by_hs[hs_code]
+        if current.get(basis_field) != previous.get(basis_field):
+            continue
+        current_value = parse_number(current.get(metric_field))
+        previous_value = parse_number(previous.get(metric_field))
+        if current_value is None or previous_value is None or previous_value <= 0:
+            continue
+        weight = parse_number(previous.get("export_value_usd")) or 0.0
+        relatives.append((current_value / previous_value, max(weight, 0.0)))
+    if not relatives:
+        return None
+    total_weight = sum(weight for _, weight in relatives)
+    if total_weight <= 0:
+        return sum(relative for relative, _ in relatives) / len(relatives)
+    return sum(relative * weight for relative, weight in relatives) / total_weight
+
+
+def add_bilateral_change_columns(
+    index_rows: list[dict[str, object]],
+    monthly: dict[str, list[dict[str, object]]],
+    metric_field: str,
+    basis_field: str,
+    prefix: str,
+) -> None:
+    comparisons = ((1, "mom_1m"), (3, "mom_3m"), (12, "yoy"))
+    for row in index_rows:
+        month = str(row["month"])
+        for lag, suffix in comparisons:
+            previous_rows = monthly.get(shift_month(month, -lag))
+            if not previous_rows:
+                continue
+            ratio = _bilateral_metric_ratio(
+                monthly[month], previous_rows, metric_field, basis_field
+            )
+            if ratio is not None:
+                row[f"{prefix}_{suffix}_pct"] = (ratio - 1.0) * 100.0
 
 
 def build_category_memory_indexes(
@@ -248,12 +310,29 @@ def _dedupe_trade_records(records: Iterable[TradeRecord]) -> list[TradeRecord]:
 
     candidates: dict[tuple[str, str], list[TradeRecord]] = defaultdict(list)
     for (month, hs_code, _), group in grouped.items():
-        candidates[(month, hs_code)].append(_aggregate_record_group(group))
+        unique_group = list({_trade_record_signature(record): record for record in group}.values())
+        candidates[(month, hs_code)].append(_aggregate_record_group(unique_group))
 
     selected: list[TradeRecord] = []
     for key in sorted(candidates):
         selected.append(max(candidates[key], key=_record_quality_key))
     return selected
+
+
+def _trade_record_signature(record: TradeRecord) -> tuple[object, ...]:
+    """Identify an identical observation repeated across overlapping inputs."""
+    return (
+        record.month,
+        record.hs_code,
+        record.item_name,
+        parse_number(record.export_value_usd),
+        parse_number(record.export_weight_kg),
+        parse_number(record.export_quantity),
+        record.quantity_unit,
+        parse_number(record.import_value_usd),
+        parse_number(record.import_weight_kg),
+        _source_group(record.source),
+    )
 
 
 def _aggregate_record_group(records: list[TradeRecord]) -> TradeRecord:
