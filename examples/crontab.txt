@@ -1,12 +1,10 @@
-# Example cron schedule.
-# Times below should be interpreted in the machine's local timezone.
-# Set DATA_GO_KR_SERVICE_KEY in the cron environment or source it from a safe shell profile.
+# Example cron schedule. Replace the Python path after checking `command -v python3`.
+# Times use the machine's local timezone. Load DATA_GO_KR_SERVICE_KEY from a
+# permission-restricted environment file; do not paste the key into this file.
+# Create output/logs before installing the entry.
 
-# Weekly refresh, every Monday 08:10.
-10 8 * * 1 cd /Users/renqi/Documents/Codex/Korean_DRAM_price && /usr/bin/python3 -m korean_memory_price run --start 202301 --end latest --outdir output/memory_weekly
+# Weekly refresh, every Monday 08:10. mkdir is used as a macOS-compatible lock.
+10 8 * * 1 cd /Users/renqi/Documents/Codex/Korean_DRAM_price && mkdir /tmp/korean-memory-price.lock 2>/dev/null && trap 'rmdir /tmp/korean-memory-price.lock' EXIT && /usr/local/bin/python3 -B -m korean_memory_price run --start 202301 --end latest --outdir output/memory >> output/logs/monthly.log 2>&1
 
-# KCS brief release windows: 11th and 21st, 09:10.
-10 9 11,21 * * cd /Users/renqi/Documents/Codex/Korean_DRAM_price && /usr/bin/python3 -m korean_memory_price run --start 202301 --end latest --outdir output/memory_brief
-
-# Final monthly statistics, usually after the 15th. Run on the 16th, 09:10.
-10 9 16 * * cd /Users/renqi/Documents/Codex/Korean_DRAM_price && /usr/bin/python3 -m korean_memory_price run --start 202301 --end latest --outdir output/memory_monthly
+# Optional monthly checkpoint. `latest` validates availability from core HS 854232.
+10 9 18 * * cd /Users/renqi/Documents/Codex/Korean_DRAM_price && mkdir /tmp/korean-memory-price.lock 2>/dev/null && trap 'rmdir /tmp/korean-memory-price.lock' EXIT && /usr/local/bin/python3 -B -m korean_memory_price run --start 202301 --end latest --outdir output/memory >> output/logs/monthly.log 2>&1

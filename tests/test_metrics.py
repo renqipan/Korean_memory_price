@@ -5,11 +5,36 @@ from korean_memory_price.metrics import (
     build_memory_index,
     build_unit_price_rows,
 )
-from korean_memory_price.categories import parse_memory_categories
+from korean_memory_price.categories import (
+    DEFAULT_FETCH_HS_CODES,
+    DEFAULT_MEMORY_CATEGORIES,
+    matches_category,
+    parse_memory_categories,
+)
 from korean_memory_price.models import TradeRecord
 
 
 class MetricsTests(unittest.TestCase):
+    def test_top_level_product_scopes_are_separate(self):
+        top_level = [
+            category
+            for category in DEFAULT_MEMORY_CATEGORIES
+            if category.role in {"core", "context"}
+        ]
+        expected = {
+            "8542321010": "semiconductor_memory",
+            "8523511000": "solid_state_media",
+            "8471702020": "storage_devices",
+        }
+        for hs_code, expected_category in expected.items():
+            matches = [
+                category.key
+                for category in top_level
+                if matches_category(hs_code, category)
+            ]
+            self.assertEqual(matches, [expected_category])
+        self.assertEqual(DEFAULT_FETCH_HS_CODES, ["854232", "852351", "847170"])
+
     def test_unit_price_and_index(self):
         records = [
             TradeRecord(month="2024.01", hs_code="8471.70.4010", export_value_usd=1000, export_weight_kg=10),
@@ -145,6 +170,8 @@ class MetricsTests(unittest.TestCase):
             TradeRecord(month="2024-02", hs_code="8542321030", export_value_usd=300, export_weight_kg=10),
             TradeRecord(month="2024-01", hs_code="8471709000", export_value_usd=400, export_weight_kg=10),
             TradeRecord(month="2024-02", hs_code="8471709000", export_value_usd=800, export_weight_kg=10),
+            TradeRecord(month="2024-01", hs_code="8523511000", export_value_usd=500, export_weight_kg=10),
+            TradeRecord(month="2024-02", hs_code="8523511000", export_value_usd=550, export_weight_kg=10),
             TradeRecord(month="2024-01", hs_code="8542321020", export_value_usd=50, export_weight_kg=10),
             TradeRecord(month="2024-02", hs_code="8542321020", export_value_usd=50, export_weight_kg=10),
         ]
@@ -155,25 +182,33 @@ class MetricsTests(unittest.TestCase):
             for row in category_rows
         }
 
-        self.assertEqual(round(by_category_month[("dram_hbm", "2024-02")]["unit_price_index"], 6), 200.0)
-        self.assertEqual(round(by_category_month[("nand", "2024-02")]["unit_price_index"], 6), 150.0)
-        self.assertEqual(round(by_category_month[("ssd", "2024-02")]["unit_price_index"], 6), 200.0)
+        self.assertEqual(round(by_category_month[("dram", "2024-02")]["unit_price_index"], 6), 200.0)
+        self.assertEqual(round(by_category_month[("flash_memory", "2024-02")]["unit_price_index"], 6), 150.0)
+        self.assertEqual(round(by_category_month[("storage_devices", "2024-02")]["unit_price_index"], 6), 200.0)
+        self.assertEqual(round(by_category_month[("solid_state_media", "2024-02")]["unit_price_index"], 6), 110.0)
         self.assertEqual(
-            round(by_category_month[("total_memory", "2024-02")]["unit_price_index"], 6),
-            185.714286,
+            round(by_category_month[("semiconductor_memory", "2024-02")]["unit_price_index"], 6),
+            176.923077,
         )
         self.assertEqual(
-            round(by_category_month[("ssd", "2024-02")]["category_export_value_share_pct"], 6),
-            41.025641,
+            round(by_category_month[("storage_devices", "2024-02")]["category_export_value_share_pct"], 6),
+            32.0,
         )
-        self.assertIn("proxy", by_category_month[("ssd", "2024-02")]["category_note"])
-        self.assertIn("8542321020", by_category_month[("total_memory", "2024-02")]["hs_codes"])
+        self.assertEqual(
+            round(by_category_month[("dram", "2024-02")]["category_scope_export_value_share_pct"], 6),
+            17.391304,
+        )
+        self.assertTrue(by_category_month[("dram", "2024-02")]["prosperity_eligible"])
+        self.assertFalse(by_category_month[("storage_devices", "2024-02")]["prosperity_eligible"])
+        self.assertIn("must not be labelled as SSD", by_category_month[("storage_devices", "2024-02")]["category_note"])
+        self.assertIn("8542321020", by_category_month[("semiconductor_memory", "2024-02")]["hs_codes"])
 
     def test_custom_category_replaces_default_category_key(self):
-        categories = parse_memory_categories(["nand=123456"])
+        categories = parse_memory_categories(["flash_memory=123456"])
         by_key = {category.key: category for category in categories}
-        self.assertEqual(by_key["nand"].hs_patterns, ("123456",))
-        self.assertEqual(len([category for category in categories if category.key == "nand"]), 1)
+        self.assertEqual(by_key["flash_memory"].hs_patterns, ("123456",))
+        self.assertTrue(by_key["flash_memory"].prosperity_eligible)
+        self.assertEqual(len([category for category in categories if category.key == "flash_memory"]), 1)
 
     def test_price_growth_is_independent_of_requested_start_month(self):
         records = []
@@ -203,11 +238,11 @@ class MetricsTests(unittest.TestCase):
         later_rows = build_category_memory_indexes(build_unit_price_rows(later_records))
         full_latest = next(
             row for row in full_rows
-            if row["category"] == "dram_hbm" and row["month"] == "2025-06"
+            if row["category"] == "semiconductor_memory" and row["month"] == "2025-06"
         )
         later_latest = next(
             row for row in later_rows
-            if row["category"] == "dram_hbm" and row["month"] == "2025-06"
+            if row["category"] == "semiconductor_memory" and row["month"] == "2025-06"
         )
 
         self.assertAlmostEqual(

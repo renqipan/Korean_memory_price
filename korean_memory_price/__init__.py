@@ -1,3 +1,3 @@
-"""Korean memory export price tracker."""
+"""Korean memory export unit value tracker."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

@@ -4,7 +4,13 @@ import argparse
 import os
 from pathlib import Path
 
-from .categories import DEFAULT_FETCH_HS_CODES, parse_memory_categories
+from .backtest import BACKTEST_COLUMNS, build_prosperity_backtest
+from .categories import (
+    CORE_CATEGORY_KEY,
+    DEFAULT_FETCH_HS_CODES,
+    matches_category,
+    parse_memory_categories,
+)
 from .charts import (
     render_category_price_trend_png,
     render_category_price_trends_png,
@@ -34,7 +40,7 @@ from .utils import month_to_yymm, parse_number, write_csv_rows
 
 
 DEFAULT_HS_CODES = DEFAULT_FETCH_HS_CODES
-CATEGORY_GROWTH_SUMMARY_CATEGORIES = ("dram_hbm", "nand")
+CATEGORY_GROWTH_SUMMARY_CATEGORIES = ("dram", "flash_memory", "multichip_memory")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -46,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="korean-memory-price",
-        description="Compute Korean memory export unit prices from KCS/TRASS data.",
+        description="Compute Korean memory export unit values from KCS/TRASS data.",
     )
     subparsers = parser.add_subparsers(required=True)
 
@@ -60,13 +66,14 @@ def build_parser() -> argparse.ArgumentParser:
     trass_import.add_argument("--out", required=True, help="Output trade CSV path.")
     trass_import.set_defaults(func=cmd_trass_import)
 
-    price = subparsers.add_parser("price", help="Compute unit prices and memory price index.")
+    price = subparsers.add_parser("price", help="Compute unit values and the core memory index.")
     price.add_argument("--input", nargs="+", required=True, help="Trade CSV files from kcs-fetch/trass-import.")
-    price.add_argument("--out", required=True, help="Unit price CSV path.")
+    price.add_argument("--out", required=True, help="Unit value CSV path.")
     price.add_argument("--index-out", required=True, help="Composite memory index CSV path.")
     price.add_argument("--score-out", help="Optional memory prosperity score CSV path.")
     price.add_argument("--category-index-out", help="Optional category-level price index CSV path.")
     price.add_argument("--overall-out", help="Optional overall memory prosperity CSV path.")
+    price.add_argument("--backtest-out", help="Optional historical prosperity backtest CSV path.")
     add_category_args(price)
     price.set_defaults(func=cmd_price)
 
@@ -116,7 +123,7 @@ def add_category_args(parser: argparse.ArgumentParser) -> None:
         default=[],
         help=(
             "Add a category as name=hs1,hs2 or name:Label=hs1,hs2. "
-            "Defaults include DRAM/HBM, NAND/Flash, SSD, and Total memory."
+            "Defaults separate memory ICs, solid-state media, and storage devices."
         ),
     )
 
@@ -138,10 +145,12 @@ def cmd_trass_import(args: argparse.Namespace) -> int:
 def cmd_price(args: argparse.Namespace) -> int:
     records = read_trade_records(args.input)
     unit_rows = build_unit_price_rows(records)
-    index_rows = build_memory_index(unit_rows)
-    category_rows = build_category_memory_indexes(unit_rows, parse_categories(args))
+    categories = parse_categories(args)
+    index_rows = build_core_memory_index(unit_rows, categories)
+    category_rows = build_category_memory_indexes(unit_rows, categories)
     score_rows = build_prosperity_scores(index_rows)
     overall_rows = build_overall_prosperity_index(score_rows, category_rows)
+    backtest_rows = build_prosperity_backtest(index_rows, score_rows)
     write_csv_rows(unit_rows, args.out, UNIT_PRICE_COLUMNS)
     write_csv_rows(index_rows, args.index_out, INDEX_COLUMNS)
     if args.category_index_out:
@@ -150,15 +159,19 @@ def cmd_price(args: argparse.Namespace) -> int:
         write_csv_rows(score_rows, args.score_out, PROSPERITY_COLUMNS)
     if args.overall_out:
         write_csv_rows(overall_rows, args.overall_out, OVERALL_PROSPERITY_COLUMNS)
+    if args.backtest_out:
+        write_csv_rows(backtest_rows, args.backtest_out, BACKTEST_COLUMNS)
     summary = latest_summary(index_rows)
-    print(f"Wrote {len(unit_rows)} unit price rows to {args.out}")
+    print(f"Wrote {len(unit_rows)} unit value rows to {args.out}")
     print(f"Wrote {len(index_rows)} memory index rows to {args.index_out}")
     if args.category_index_out:
-        print(f"Wrote {len(category_rows)} category price index rows to {args.category_index_out}")
+        print(f"Wrote {len(category_rows)} category unit value index rows to {args.category_index_out}")
     if args.score_out:
         print(f"Wrote {len(score_rows)} memory prosperity score rows to {args.score_out}")
     if args.overall_out:
         print(f"Wrote {len(overall_rows)} overall memory prosperity rows to {args.overall_out}")
+    if args.backtest_out:
+        print(f"Wrote {len(backtest_rows)} prosperity backtest rows to {args.backtest_out}")
     if summary:
         print(
             "Latest memory index: "
@@ -212,19 +225,23 @@ def cmd_run(args: argparse.Namespace) -> int:
     category_index_path = outdir / "memory_category_price_index.csv"
     score_path = outdir / "memory_prosperity_score.csv"
     overall_path = outdir / "memory_overall_prosperity.csv"
+    backtest_path = outdir / "memory_prosperity_backtest.csv"
     chart_dir = outdir / "charts"
 
     write_trade_records(all_records, trade_path)
     unit_rows = build_unit_price_rows(all_records)
-    index_rows = build_memory_index(unit_rows)
-    category_rows = build_category_memory_indexes(unit_rows, parse_categories(args))
+    categories = parse_categories(args)
+    index_rows = build_core_memory_index(unit_rows, categories)
+    category_rows = build_category_memory_indexes(unit_rows, categories)
     score_rows = build_prosperity_scores(index_rows)
     overall_rows = build_overall_prosperity_index(score_rows, category_rows)
+    backtest_rows = build_prosperity_backtest(index_rows, score_rows)
     write_csv_rows(unit_rows, unit_path, UNIT_PRICE_COLUMNS)
     write_csv_rows(index_rows, index_path, INDEX_COLUMNS)
     write_csv_rows(category_rows, category_index_path, CATEGORY_INDEX_COLUMNS)
     write_csv_rows(score_rows, score_path, PROSPERITY_COLUMNS)
     write_csv_rows(overall_rows, overall_path, OVERALL_PROSPERITY_COLUMNS)
+    write_csv_rows(backtest_rows, backtest_path, BACKTEST_COLUMNS)
 
     if not args.no_charts:
         chart_dir.mkdir(parents=True, exist_ok=True)
@@ -240,11 +257,12 @@ def cmd_run(args: argparse.Namespace) -> int:
             )
 
     print(f"Wrote trade data to {trade_path}")
-    print(f"Wrote unit prices to {unit_path}")
+    print(f"Wrote unit values to {unit_path}")
     print(f"Wrote memory index to {index_path}")
-    print(f"Wrote category price index to {category_index_path}")
+    print(f"Wrote category unit value index to {category_index_path}")
     print(f"Wrote memory prosperity score to {score_path}")
     print(f"Wrote overall memory prosperity to {overall_path}")
+    print(f"Wrote prosperity backtest to {backtest_path}")
     if not args.no_charts:
         print(f"Wrote charts to {chart_dir}")
     print_latest_category_growth_summary(category_rows)
@@ -266,7 +284,13 @@ def fetch_kcs_records(args: argparse.Namespace):
         service_key_encoded=args.encoded_key,
     )
     start_yymm = month_to_yymm(args.start)
-    end_yymm = resolve_end_yymm(args.end, client, hs_codes, start_yymm)
+    availability_hs_codes = hs_codes if args.hs else ["854232"]
+    end_yymm = resolve_end_yymm(
+        args.end,
+        client,
+        availability_hs_codes,
+        start_yymm,
+    )
     if start_yymm > end_yymm:
         raise SystemExit(
             f"Start month {start_yymm} must not be after end month {end_yymm}."
@@ -281,6 +305,23 @@ def parse_categories(args: argparse.Namespace):
         return parse_memory_categories(getattr(args, "category", []))
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
+
+
+def build_core_memory_index(unit_rows, categories):
+    core_category = next(
+        (category for category in categories if category.key == CORE_CATEGORY_KEY),
+        None,
+    )
+    if core_category is None:
+        raise SystemExit(
+            f"Missing required core category {CORE_CATEGORY_KEY!r}."
+        )
+    core_rows = [
+        row
+        for row in unit_rows
+        if matches_category(row.get("hs_code"), core_category)
+    ]
+    return build_memory_index(core_rows)
 
 
 def resolve_end_yymm(
@@ -322,7 +363,7 @@ def format_latest_category_growth_lines(
     )
     if not months:
         return []
-    lines = ["Latest DRAM/HBM and NAND unit price growth:"]
+    lines = ["Latest semiconductor-memory unit value growth:"]
     for month in months[-month_count:]:
         lines.append(f"  {month}:")
         for category in CATEGORY_GROWTH_SUMMARY_CATEGORIES:

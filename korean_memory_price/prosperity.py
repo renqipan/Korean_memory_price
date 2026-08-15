@@ -16,6 +16,7 @@ PROSPERITY_COLUMNS = [
     "memory_regime",
     "cycle_phase",
     "price_volume_confirmation",
+    "revenue_confirmation",
     "score_confidence",
     "valid_indicator_count",
     "value_score",
@@ -30,6 +31,7 @@ PROSPERITY_COLUMNS = [
     "export_quantity_index",
     "export_volume_basis",
     "export_value_usd",
+    "score_method",
     "model_version",
 ]
 
@@ -41,7 +43,7 @@ OVERALL_PROSPERITY_COLUMNS = [
     "overall_score_mom_1m",
     "overall_score_mom_3m",
     "overall_memory_regime",
-    "total_memory_score",
+    "core_memory_score",
     "category_breadth_score",
     "category_positive_share_pct",
     "category_positive_count",
@@ -52,28 +54,35 @@ OVERALL_PROSPERITY_COLUMNS = [
 ]
 
 
-MODEL_VERSION = "memory-prosperity-v4"
+MODEL_VERSION = "memory-prosperity-v5"
 
-OVERALL_MODEL_VERSION = "overall-memory-prosperity-v2"
+OVERALL_MODEL_VERSION = "overall-memory-prosperity-v3"
 
-OVERALL_SCORE_WEIGHT = 0.70
-CATEGORY_BREADTH_WEIGHT = 0.30
+OVERALL_SCORE_WEIGHT = 0.80
+CATEGORY_BREADTH_WEIGHT = 0.20
 
 
 MODEL_WEIGHTS = {
-    "export_value_yoy_pct": 0.15,
-    "export_quantity_yoy_pct": 0.25,
-    "unit_price_yoy_pct": 0.40,
-    "unit_price_mom_1m_pct": 0.20,
+    # Export value is approximately price x volume, so it remains a diagnostic
+    # confirmation signal and deliberately receives no independent score weight.
+    "export_value_yoy_pct": 0.0,
+    "export_quantity_yoy_pct": 0.35,
+    "unit_price_yoy_pct": 0.4875,
+    "unit_price_mom_1m_pct": 0.1625,
 }
 
 
 MODEL_THRESHOLDS = {
     "export_value_yoy_pct": 50.0,
-    "export_quantity_yoy_pct": 35.0,
-    "unit_price_yoy_pct": 50.0,
-    "unit_price_mom_1m_pct": 12.0,
+    "export_quantity_yoy_pct": 30.0,
+    "unit_price_yoy_pct": 40.0,
+    "unit_price_mom_1m_pct": 8.0,
 }
+
+
+SCORED_INDICATORS = tuple(
+    key for key, weight in MODEL_WEIGHTS.items() if weight > 0
+)
 
 
 def build_prosperity_scores(
@@ -89,7 +98,7 @@ def build_prosperity_scores(
         available = {
             key: value
             for key, value in components.items()
-            if value is not None
+            if key in SCORED_INDICATORS and value is not None
         }
         score = None
         regime = "insufficient_data"
@@ -115,7 +124,8 @@ def build_prosperity_scores(
                 "memory_regime": regime,
                 "cycle_phase": "insufficient_data",
                 "price_volume_confirmation": classify_price_volume_confirmation(row),
-                "score_confidence": len(available) / len(MODEL_WEIGHTS),
+                "revenue_confirmation": classify_revenue_confirmation(row),
+                "score_confidence": len(available) / len(SCORED_INDICATORS),
                 "valid_indicator_count": len(available),
                 "value_score": _component_score(components["export_value_yoy_pct"]),
                 "volume_score": _component_score(components["export_quantity_yoy_pct"]),
@@ -129,6 +139,7 @@ def build_prosperity_scores(
                 "export_quantity_index": row.get("export_quantity_index"),
                 "export_volume_basis": row.get("export_volume_basis"),
                 "export_value_usd": row.get("export_value_usd"),
+                "score_method": "65% price cycle + 35% export-volume cycle; export value diagnostic only",
                 "model_version": MODEL_VERSION,
             }
         )
@@ -193,13 +204,27 @@ def classify_price_volume_confirmation(row: dict[str, object]) -> str:
     return "price_and_volume_weak"
 
 
+def classify_revenue_confirmation(row: dict[str, object]) -> str:
+    value_yoy = parse_number(row.get("export_value_yoy_pct"))
+    price_yoy = parse_number(row.get("unit_price_yoy_pct"))
+    volume_yoy = parse_number(row.get("export_quantity_yoy_pct"))
+    if value_yoy is None or price_yoy is None or volume_yoy is None:
+        return "insufficient_data"
+    implied_direction = (1.0 + price_yoy / 100.0) * (1.0 + volume_yoy / 100.0) - 1.0
+    if value_yoy == 0 and implied_direction == 0:
+        return "confirmed"
+    if value_yoy * implied_direction > 0:
+        return "confirmed"
+    return "divergent"
+
+
 def build_overall_prosperity_index(
     prosperity_rows: list[dict[str, object]],
     category_rows: list[dict[str, object]],
 ) -> list[dict[str, object]]:
     categories_by_month: dict[str, list[dict[str, object]]] = {}
     for row in category_rows:
-        if str(row.get("category")) == "total_memory":
+        if not _is_prosperity_eligible(row):
             continue
         month = str(row.get("month", ""))
         if month:
@@ -208,10 +233,10 @@ def build_overall_prosperity_index(
     overall_rows: list[dict[str, object]] = []
     for row in sorted(prosperity_rows, key=lambda item: str(item.get("month", ""))):
         month = str(row.get("month", ""))
-        total_score = parse_number(row.get("memory_score"))
+        core_score = parse_number(row.get("memory_score"))
         category_summary = _category_breadth_summary(categories_by_month.get(month, []))
         category_score = category_summary["category_breadth_score"]
-        overall_score = _combine_overall_score(total_score, category_score)
+        overall_score = _combine_overall_score(core_score, category_score)
         overall_rows.append(
             {
                 "month": row.get("month"),
@@ -220,7 +245,7 @@ def build_overall_prosperity_index(
                 "overall_score_mom_1m": None,
                 "overall_score_mom_3m": None,
                 "overall_memory_regime": classify_memory_regime(overall_score),
-                "total_memory_score": total_score,
+                "core_memory_score": core_score,
                 **category_summary,
                 "model_version": OVERALL_MODEL_VERSION,
             }
@@ -242,7 +267,12 @@ def _category_breadth_summary(rows: list[dict[str, object]]) -> dict[str, object
     dominant_category = ""
     dominant_share: float | None = None
     for row in rows:
-        share = max(0.0, parse_number(row.get("category_export_value_share_pct")) or 0.0)
+        share = max(
+            0.0,
+            parse_number(row.get("category_scope_export_value_share_pct"))
+            or parse_number(row.get("category_export_value_share_pct"))
+            or 0.0,
+        )
         if dominant_share is None or share > dominant_share:
             dominant_share = share
             dominant_category = str(row.get("category") or "")
@@ -279,7 +309,7 @@ def _category_cycle_score(row: dict[str, object]) -> float | None:
     )
     if yoy_component is None or mom_component is None:
         return None
-    signal = yoy_component * 0.70 + mom_component * 0.30
+    signal = yoy_component * 0.75 + mom_component * 0.25
     return _component_score(signal)
 
 
@@ -357,7 +387,11 @@ def _normalize_component(value: object, threshold: float) -> float | None:
     number = parse_number(value)
     if number is None:
         return None
-    return max(-1.0, min(1.0, number / threshold))
+    if threshold <= 0:
+        raise ValueError("threshold must be positive")
+    # Smooth half-saturation avoids the old hard clipping where every reading
+    # beyond a threshold became indistinguishable from a much larger shock.
+    return number / (abs(number) + threshold)
 
 
 def _component_score(component: float | None) -> float | None:
@@ -407,3 +441,19 @@ def _first_value(row: dict[str, object], *keys: str) -> object:
         if value not in {None, ""}:
             return value
     return None
+
+
+def _is_prosperity_eligible(row: dict[str, object]) -> bool:
+    value = row.get("prosperity_eligible")
+    if value is None:
+        # Backward compatibility for manually constructed/legacy category rows.
+        return str(row.get("category")) not in {
+            "total_memory",
+            "semiconductor_memory",
+            "solid_state_media",
+            "storage_devices",
+            "all_tracked_storage",
+        }
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y"}

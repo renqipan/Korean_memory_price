@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+from math import ceil, floor, log10
 import shutil
 import subprocess
 from tempfile import TemporaryDirectory
@@ -20,12 +21,20 @@ PALETTE = {
     "overall_memory_prosperity_score": "#111827",
     "overall_memory_prosperity_3m_avg": "#dc2626",
     "category_breadth_score": "#2563eb",
-    "dram_hbm": "#b45309",
-    "nand": "#2563eb",
-    "ssd": "#0f766e",
-    "total_memory": "#111827",
+    "semiconductor_memory": "#111827",
+    "dram": "#b45309",
+    "flash_memory": "#2563eb",
+    "multichip_memory": "#7c3aed",
+    "solid_state_media": "#0f766e",
+    "storage_devices": "#dc2626",
     "category_price_index": "#111827",
 }
+
+CATEGORY_OVERVIEW_KEYS = (
+    "semiconductor_memory",
+    "solid_state_media",
+    "storage_devices",
+)
 
 CHART_FONT_SIZES = {
     "title": 32,
@@ -41,8 +50,8 @@ def _render_memory_indicators_svg(rows: list[dict[str, object]], path: str | Pat
     series = [
         ("export_value_yoy_pct", "export value YoY"),
         ("export_quantity_yoy_pct", "export quantity YoY"),
-        ("unit_price_yoy_pct", "unit price YoY"),
-        ("unit_price_mom_1m_pct", "unit price MoM"),
+        ("unit_price_yoy_pct", "unit value YoY"),
+        ("unit_price_mom_1m_pct", "unit value MoM"),
     ]
     _render_line_chart(
         rows=rows,
@@ -137,6 +146,7 @@ def _render_line_chart(
     zero_line: bool,
     y_min: float | None = None,
     y_max: float | None = None,
+    log_scale: bool = False,
 ) -> None:
     rows = sorted(rows, key=lambda item: str(item.get("month", "")))
     months = [str(row.get("month", "")) for row in rows]
@@ -160,21 +170,32 @@ def _render_line_chart(
     plot_width = width - left - right
     plot_height = height - top - bottom
 
-    low = min(values)
-    high = max(values)
-    if zero_line:
-        low = min(low, 0.0)
-        high = max(high, 0.0)
-    if y_min is not None:
-        low = min(low, y_min)
-    if y_max is not None:
-        high = max(high, y_max)
-    if low == high:
-        low -= 1.0
-        high += 1.0
-    padding = (high - low) * 0.08
-    low -= padding
-    high += padding
+    if log_scale:
+        positive_values = [value for value in values if value > 0]
+        if not positive_values:
+            _write_empty_svg(path, title)
+            return
+        low = 10.0 ** floor(log10(min(positive_values)))
+        high = 10.0 ** ceil(log10(max(positive_values)))
+        if low == high:
+            low /= 10.0
+            high *= 10.0
+    else:
+        low = min(values)
+        high = max(values)
+        if zero_line:
+            low = min(low, 0.0)
+            high = max(high, 0.0)
+        if y_min is not None:
+            low = min(low, y_min)
+        if y_max is not None:
+            high = max(high, y_max)
+        if low == high:
+            low -= 1.0
+            high += 1.0
+        padding = (high - low) * 0.08
+        low -= padding
+        high += padding
 
     def x_pos(index: int) -> float:
         if len(months) == 1:
@@ -182,6 +203,8 @@ def _render_line_chart(
         return left + plot_width * index / (len(months) - 1)
 
     def y_pos(value: float) -> float:
+        if log_scale:
+            return top + (log10(high) - log10(value)) / (log10(high) - log10(low)) * plot_height
         return top + (high - value) / (high - low) * plot_height
 
     svg: list[str] = [
@@ -191,7 +214,8 @@ def _render_line_chart(
         f'<text x="{left}" y="72" font-family="Arial, sans-serif" font-size="{CHART_FONT_SIZES["subtitle"]}" fill="#6b7280">Source: KCS/TRASS derived metrics</text>',
     ]
 
-    for tick in _nice_ticks(low, high, 5):
+    ticks = _log_ticks(low, high) if log_scale else _nice_ticks(low, high, 5)
+    for tick in ticks:
         y = y_pos(tick)
         color = "#9ca3af" if abs(tick) < 1e-9 else "#e5e7eb"
         svg.append(f'<line x1="{left}" y1="{y:.2f}" x2="{left + plot_width}" y2="{y:.2f}" stroke="{color}" stroke-width="1"/>')
@@ -203,7 +227,9 @@ def _render_line_chart(
 
     label_every = max(1, len(months) // 8)
     for idx, month in enumerate(months):
-        if idx % label_every == 0 or idx == len(months) - 1:
+        is_last = idx == len(months) - 1
+        far_enough_from_last = len(months) - 1 - idx >= max(2, label_every // 2)
+        if is_last or (idx % label_every == 0 and far_enough_from_last):
             x = x_pos(idx)
             svg.append(f'<text x="{x:.2f}" y="{height - 58}" text-anchor="middle" font-family="Arial, sans-serif" font-size="{CHART_FONT_SIZES["axis_tick"]}" fill="#6b7280">{html.escape(month)}</text>')
 
@@ -211,7 +237,7 @@ def _render_line_chart(
         points = []
         for idx, row in enumerate(rows):
             value = parse_number(row.get(key))
-            if value is None:
+            if value is None or (log_scale and value <= 0):
                 continue
             points.append(f"{x_pos(idx):.2f},{y_pos(value):.2f}")
         if not points:
@@ -241,10 +267,11 @@ def _render_category_price_trends_svg(
         rows=wide_rows,
         series=series,
         path=path,
-        title="Korean Memory Unit Price Index by Category",
-        y_label="index",
+        title="Korean Export Unit Value Index by Product Scope",
+        y_label="index (log scale)",
         zero_line=False,
         y_min=0.0,
+        log_scale=True,
     )
 
 
@@ -283,13 +310,16 @@ def _category_price_wide_rows(
         if row.get("category")
     }
     ordered_categories = [
-        category.key
-        for category in DEFAULT_MEMORY_CATEGORIES
-        if category.key in labels_by_category
+        key
+        for key in CATEGORY_OVERVIEW_KEYS
+        if key in labels_by_category
     ]
-    ordered_categories.extend(
-        sorted(set(labels_by_category) - set(ordered_categories))
-    )
+    if not ordered_categories:
+        ordered_categories = [
+            category.key
+            for category in DEFAULT_MEMORY_CATEGORIES
+            if category.key in labels_by_category
+        ]
     months = sorted({str(row.get("month")) for row in rows if row.get("month")})
     values: dict[tuple[str, str], object] = {}
     for row in rows:
@@ -382,8 +412,22 @@ def _nice_ticks(low: float, high: float, count: int) -> list[float]:
 
 
 def _fmt_tick(value: float) -> str:
+    if abs(value) >= 1_000_000:
+        return f"{value / 1_000_000:.0f}m"
+    if abs(value) >= 1_000:
+        return f"{value / 1_000:.0f}k"
     if abs(value) >= 100:
         return f"{value:.0f}"
     if abs(value) >= 10:
         return f"{value:.1f}"
     return f"{value:.2f}"
+
+
+def _log_ticks(low: float, high: float) -> list[float]:
+    start = floor(log10(low))
+    end = ceil(log10(high))
+    step = max(1, ceil((end - start) / 6))
+    ticks = [10.0**exponent for exponent in range(start, end + 1, step)]
+    if ticks[-1] != 10.0**end:
+        ticks.append(10.0**end)
+    return ticks

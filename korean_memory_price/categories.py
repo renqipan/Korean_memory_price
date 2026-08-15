@@ -14,44 +14,122 @@ class MemoryCategory:
     hs_patterns: tuple[str, ...]
     include_all: bool = False
     note: str = ""
+    role: str = "context"
+    parent_key: str = ""
+    prosperity_eligible: bool = False
+
+
+CORE_CATEGORY_KEY = "semiconductor_memory"
 
 
 DEFAULT_MEMORY_CATEGORIES = [
     MemoryCategory(
-        key="dram_hbm",
-        label="DRAM/HBM",
-        hs_patterns=("8542321010", "8542323000"),
-        note="DRAM plus stacked/compound memory proxy; confirm exact HBM HSK codes in TRASS when available.",
+        key=CORE_CATEGORY_KEY,
+        label="Semiconductor memory IC",
+        hs_patterns=("854232",),
+        note="Core memory-IC scope used for the price and prosperity indexes.",
+        role="core",
     ),
     MemoryCategory(
-        key="nand",
-        label="NAND/Flash",
+        key="dram",
+        label="DRAM",
+        hs_patterns=("8542321010",),
+        note="KCS HSK code explicitly classified as DRAM.",
+        role="component",
+        parent_key=CORE_CATEGORY_KEY,
+        prosperity_eligible=True,
+    ),
+    MemoryCategory(
+        key="sram",
+        label="SRAM",
+        hs_patterns=("8542321020",),
+        note="KCS HSK code explicitly classified as SRAM.",
+        role="component",
+        parent_key=CORE_CATEGORY_KEY,
+        prosperity_eligible=True,
+    ),
+    MemoryCategory(
+        key="flash_memory",
+        label="Flash memory (NAND proxy)",
         hs_patterns=("8542321030",),
-        note="Flash memory proxy for NAND exports.",
+        note="KCS Flash-memory line; use as a NAND proxy rather than a pure NAND series.",
+        role="component",
+        parent_key=CORE_CATEGORY_KEY,
+        prosperity_eligible=True,
     ),
     MemoryCategory(
-        key="ssd",
-        label="SSD",
-        hs_patterns=("8471704010", "8471709000"),
-        note="SSD/storage-device proxy; current KCS data may report only 8471709000, so treat small-volume moves cautiously.",
+        key="multichip_memory",
+        label="Multichip memory IC (HBM proxy)",
+        hs_patterns=("8542323000",),
+        note="Multichip IC line used as an HBM-related proxy; it is not a pure HBM classification.",
+        role="component",
+        parent_key=CORE_CATEGORY_KEY,
+        prosperity_eligible=True,
     ),
     MemoryCategory(
-        key="total_memory",
-        label="Total memory",
+        key="mco_memory",
+        label="MCO memory IC",
+        hs_patterns=("8542324000",),
+        note="Multi-component integrated-circuit memory line.",
+        role="component",
+        parent_key=CORE_CATEGORY_KEY,
+        prosperity_eligible=True,
+    ),
+    MemoryCategory(
+        key="other_memory_ic",
+        label="Other memory IC",
+        hs_patterns=("8542321090", "8542322000"),
+        note="Other and hybrid memory-integrated-circuit lines within HSK 854232.",
+        role="component",
+        parent_key=CORE_CATEGORY_KEY,
+        prosperity_eligible=True,
+    ),
+    MemoryCategory(
+        key="solid_state_media",
+        label="Solid-state non-volatile media",
+        hs_patterns=("852351",),
+        note="Separate solid-state-media scope; includes more than SSDs and is not used in the core memory-IC prosperity score.",
+        role="context",
+    ),
+    MemoryCategory(
+        key="storage_devices",
+        label="Storage devices",
+        hs_patterns=("847170",),
+        note="General computer storage devices; includes HDD and other units and must not be labelled as SSD.",
+        role="context",
+    ),
+    MemoryCategory(
+        key="all_tracked_storage",
+        label="All tracked memory and storage",
         hs_patterns=(),
         include_all=True,
-        note="All fetched memory-related HS/HSK records.",
+        note="Aggregate of every fetched memory-IC, solid-state-media and storage-device record.",
+        role="aggregate",
     ),
 ]
 
 
-DEFAULT_FETCH_HS_CODES = ["854232", "8471709000", "8471704010"]
+DEFAULT_FETCH_HS_CODES = ["854232", "852351", "847170"]
 
 
 def parse_memory_categories(values: Iterable[str]) -> list[MemoryCategory]:
     categories = list(DEFAULT_MEMORY_CATEGORIES)
     for value in values:
         parsed = parse_memory_category(value)
+        existing = next(
+            (category for category in categories if category.key == parsed.key),
+            None,
+        )
+        if existing is not None:
+            parsed = MemoryCategory(
+                key=parsed.key,
+                label=parsed.label,
+                hs_patterns=parsed.hs_patterns,
+                note=existing.note,
+                role=existing.role,
+                parent_key=existing.parent_key,
+                prosperity_eligible=existing.prosperity_eligible,
+            )
         categories = [
             parsed if category.key == parsed.key else category
             for category in categories

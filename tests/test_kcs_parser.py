@@ -1,6 +1,8 @@
 import unittest
+import urllib.error
+from unittest.mock import MagicMock, patch
 
-from korean_memory_price.kcs import _iter_yymm_chunks, parse_item_trade_xml
+from korean_memory_price.kcs import KCSClient, _iter_yymm_chunks, parse_item_trade_xml
 
 
 SAMPLE_XML = """<?xml version="1.0" encoding="UTF-8"?>
@@ -56,6 +58,27 @@ class KCSParserTests(unittest.TestCase):
     def test_iter_yymm_chunks_rejects_reversed_range(self):
         with self.assertRaisesRegex(ValueError, "must not be after"):
             _iter_yymm_chunks("202603", "202301")
+
+    @patch("korean_memory_price.kcs.time.sleep")
+    @patch("korean_memory_price.kcs.urllib.request.urlopen")
+    def test_transient_http_error_is_retried(self, urlopen, sleep):
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = SAMPLE_XML.encode()
+        urlopen.side_effect = [
+            urllib.error.HTTPError("https://example.test", 502, "bad gateway", {}, None),
+            response,
+        ]
+        client = KCSClient(
+            service_key="test",
+            max_retries=2,
+            retry_backoff_seconds=0.01,
+        )
+
+        records = client.fetch_item_trade("202401", "202401", "854232")
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(urlopen.call_count, 2)
+        sleep.assert_called_once_with(0.01)
 
 
 if __name__ == "__main__":

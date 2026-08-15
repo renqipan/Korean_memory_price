@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import urllib.parse
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
+import time
 from dataclasses import dataclass
 
 from .models import TradeRecord
 from .utils import current_month, month_to_yymm, normalize_hs_code, parse_number, shift_month, yymm_to_month
 
 
-DATA_GO_KR_ENDPOINT = "http://apis.data.go.kr/1220000/Itemtrade/getItemtradeList"
+DATA_GO_KR_ENDPOINT = "https://apis.data.go.kr/1220000/Itemtrade/getItemtradeList"
 LEGACY_CUSTOMS_ENDPOINT = (
     "http://openapi.customs.go.kr/openapi/service/newTradestatistics/getitemtradeList"
 )
@@ -25,6 +27,8 @@ class KCSClient:
     endpoint: str = "data-go-kr"
     service_key_encoded: bool = False
     timeout: int = 30
+    max_retries: int = 3
+    retry_backoff_seconds: float = 0.5
 
     def fetch_item_trade(self, start_yymm: str, end_yymm: str, hs_code: str) -> list[TradeRecord]:
         hs_code = normalize_hs_code(hs_code)
@@ -35,9 +39,27 @@ class KCSClient:
         else:
             raise ValueError("endpoint must be 'data-go-kr' or 'legacy'")
         request = urllib.request.Request(url, headers={"User-Agent": "korean-memory-price/0.1"})
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
-            body = response.read().decode("utf-8-sig", errors="replace")
+        body = self._request_body(request)
         return parse_item_trade_xml(body, requested_hs_code=hs_code, source=f"kcs:{self.endpoint}")
+
+    def _request_body(self, request: urllib.request.Request) -> str:
+        for attempt in range(self.max_retries + 1):
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    return response.read().decode("utf-8-sig", errors="replace")
+            except urllib.error.HTTPError as exc:
+                retryable = exc.code == 429 or 500 <= exc.code <= 599
+                if not retryable or attempt >= self.max_retries:
+                    raise KCSAPIError(
+                        f"KCS request failed after {attempt + 1} attempt(s): HTTP {exc.code}"
+                    ) from exc
+            except (urllib.error.URLError, TimeoutError) as exc:
+                if attempt >= self.max_retries:
+                    raise KCSAPIError(
+                        f"KCS request failed after {attempt + 1} attempt(s): {exc.reason if isinstance(exc, urllib.error.URLError) else exc}"
+                    ) from exc
+            time.sleep(self.retry_backoff_seconds * (2**attempt))
+        raise AssertionError("unreachable")
 
     def fetch_many(
         self,

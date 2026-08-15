@@ -62,8 +62,12 @@ INDEX_COLUMNS = [
 CATEGORY_INDEX_COLUMNS = [
     "category",
     "category_label",
+    "category_role",
+    "parent_category",
+    "prosperity_eligible",
     *INDEX_COLUMNS,
     "category_export_value_share_pct",
+    "category_scope_export_value_share_pct",
     "category_hs_patterns",
     "category_note",
 ]
@@ -271,7 +275,17 @@ def build_category_memory_indexes(
         month = str(row.get("month", ""))
         if month:
             total_value_by_month[month] += parse_number(row.get("export_value_usd")) or 0.0
-    for category in categories or DEFAULT_MEMORY_CATEGORIES:
+    selected_categories = list(categories or DEFAULT_MEMORY_CATEGORIES)
+    value_by_category_month: dict[tuple[str, str], float] = defaultdict(float)
+    for category in selected_categories:
+        for row in rows:
+            month = str(row.get("month", ""))
+            if month and matches_category(row.get("hs_code"), category):
+                value_by_category_month[(category.key, month)] += (
+                    parse_number(row.get("export_value_usd")) or 0.0
+                )
+
+    for category in selected_categories:
         filtered_rows = [
             row
             for row in rows
@@ -281,15 +295,28 @@ def build_category_memory_indexes(
             continue
         for index_row in build_memory_index(filtered_rows):
             export_value = parse_number(index_row.get("export_value_usd"))
-            total_value = total_value_by_month.get(str(index_row.get("month")), 0.0)
+            month = str(index_row.get("month"))
+            total_value = total_value_by_month.get(month, 0.0)
+            scope_value = (
+                value_by_category_month.get((category.parent_key, month), 0.0)
+                if category.parent_key
+                else total_value
+            )
             category_rows.append(
                 {
                     "category": category.key,
                     "category_label": category.label,
+                    "category_role": category.role,
+                    "parent_category": category.parent_key,
+                    "prosperity_eligible": category.prosperity_eligible,
                     **index_row,
                     "category_export_value_share_pct": safe_div(
                         (export_value or 0.0) * 100.0,
                         total_value,
+                    ),
+                    "category_scope_export_value_share_pct": safe_div(
+                        (export_value or 0.0) * 100.0,
+                        scope_value,
                     ),
                     "category_hs_patterns": category_hs_patterns(category),
                     "category_note": category_note(category),

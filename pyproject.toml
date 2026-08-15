@@ -1,7 +1,7 @@
 [project]
 name = "korean-memory-price"
-version = "0.1.0"
-description = "Compute Korean memory export unit prices and prosperity scores from KCS/TRASS data."
+version = "0.2.0"
+description = "Track Korean memory export unit values and prosperity from KCS/TRASS data."
 requires-python = ">=3.10"
 dependencies = ["CairoSVG>=2.7"]
 
