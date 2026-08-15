@@ -17,6 +17,7 @@ BACKTEST_COLUMNS = [
     "expansion_avg_future_change_pct",
     "contraction_avg_future_change_pct",
     "regime_spread_pct",
+    "validation_design",
     "validation_status",
     "first_evaluated_month",
     "last_evaluated_month",
@@ -30,9 +31,10 @@ def build_prosperity_backtest(
 ) -> list[dict[str, object]]:
     """Evaluate whether the score separates subsequent core unit-value returns.
 
-    This is an out-of-sample-by-time diagnostic: the score at month t is paired
-    only with a later unit-price-index observation at t+h.  It is deliberately
-    descriptive and does not tune model parameters on the same observations.
+    This is a retrospective forward-association diagnostic: the score at month
+    t is paired only with a later unit-value-index observation at t+h.  It is
+    not a held-out or independently specified out-of-sample test, and future
+    windows overlap for horizons longer than one month.
     """
     index_by_month = {
         str(row.get("month")): row
@@ -95,6 +97,7 @@ def build_prosperity_backtest(
                 "expansion_avg_future_change_pct": expansion_average,
                 "contraction_avg_future_change_pct": contraction_average,
                 "regime_spread_pct": spread,
+                "validation_design": "internal_forward_association_overlapping_horizons",
                 "validation_status": _validation_status(
                     len(pairs), correlation, hit_rate, spread
                 ),
@@ -135,5 +138,5 @@ def _validation_status(
     if sample_count < 24 or correlation is None or hit_rate is None or spread is None:
         return "insufficient_sample"
     if correlation >= 0.10 and hit_rate >= 55.0 and spread > 0.0:
-        return "supportive"
-    return "mixed"
+        return "supportive_internal"
+    return "mixed_internal"

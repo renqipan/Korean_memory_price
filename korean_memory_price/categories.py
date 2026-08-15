@@ -32,9 +32,12 @@ DEFAULT_MEMORY_CATEGORIES = [
     ),
     MemoryCategory(
         key="dram",
-        label="DRAM",
+        label="DRAM IC",
         hs_patterns=("8542321010",),
-        note="KCS HSK code explicitly classified as DRAM.",
+        note=(
+            "DRAM integrated circuits only. Korea's official ICT DRAM total also "
+            "includes HSK 8473304060 DRAM modules."
+        ),
         role="component",
         parent_key=CORE_CATEGORY_KEY,
         prosperity_eligible=True,
@@ -85,6 +88,38 @@ DEFAULT_MEMORY_CATEGORIES = [
         prosperity_eligible=True,
     ),
     MemoryCategory(
+        key="dram_module",
+        label="DRAM module",
+        hs_patterns=("8473304060",),
+        note=(
+            "DRAM modules reported outside HS 854232; kept outside the core "
+            "memory-IC prosperity index."
+        ),
+        role="official_component",
+        parent_key="ict_memory_semiconductors",
+    ),
+    MemoryCategory(
+        key="ict_dram",
+        label="Official ICT DRAM scope",
+        hs_patterns=("8542321010", "8473304060"),
+        note=(
+            "Korean official ICT-export DRAM scope: DRAM IC plus DRAM module, "
+            "as confirmed by the KOSIS statistical agency response."
+        ),
+        role="official_scope",
+        parent_key="ict_memory_semiconductors",
+    ),
+    MemoryCategory(
+        key="ict_memory_semiconductors",
+        label="Official ICT memory-semiconductor scope",
+        hs_patterns=("854232", "8473304060"),
+        note=(
+            "Official ICT memory-semiconductor reconciliation scope. It is "
+            "reported separately because the module line is not a memory IC."
+        ),
+        role="official_scope",
+    ),
+    MemoryCategory(
         key="solid_state_media",
         label="Solid-state non-volatile media",
         hs_patterns=("852351",),
@@ -95,7 +130,11 @@ DEFAULT_MEMORY_CATEGORIES = [
         key="storage_devices",
         label="Storage devices",
         hs_patterns=("847170",),
-        note="General computer storage devices; includes HDD and other units and must not be labelled as SSD.",
+        note=(
+            "General computer storage devices; includes HDD and other units and "
+            "must not be labelled as SSD. Its aggregate unit value is highly "
+            "mix-sensitive, so it is excluded from the overview chart and score."
+        ),
         role="context",
     ),
     MemoryCategory(
@@ -109,7 +148,7 @@ DEFAULT_MEMORY_CATEGORIES = [
 ]
 
 
-DEFAULT_FETCH_HS_CODES = ["854232", "852351", "847170"]
+DEFAULT_FETCH_HS_CODES = ["854232", "8473304060", "852351", "847170"]
 
 
 def parse_memory_categories(values: Iterable[str]) -> list[MemoryCategory]:

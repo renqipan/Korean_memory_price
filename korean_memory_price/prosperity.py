@@ -15,12 +15,14 @@ PROSPERITY_COLUMNS = [
     "score_mom_3m",
     "memory_regime",
     "cycle_phase",
+    "unit_value_volume_confirmation",
     "price_volume_confirmation",
     "revenue_confirmation",
     "score_confidence",
     "valid_indicator_count",
     "value_score",
     "volume_score",
+    "unit_value_score",
     "price_score",
     "momentum_score",
     "export_value_component",
@@ -32,6 +34,7 @@ PROSPERITY_COLUMNS = [
     "export_volume_basis",
     "export_value_usd",
     "score_method",
+    "signal_basis",
     "model_version",
 ]
 
@@ -54,9 +57,9 @@ OVERALL_PROSPERITY_COLUMNS = [
 ]
 
 
-MODEL_VERSION = "memory-prosperity-v5"
+MODEL_VERSION = "memory-prosperity-v5.1"
 
-OVERALL_MODEL_VERSION = "overall-memory-prosperity-v3"
+OVERALL_MODEL_VERSION = "overall-memory-prosperity-v3.1"
 
 OVERALL_SCORE_WEIGHT = 0.80
 CATEGORY_BREADTH_WEIGHT = 0.20
@@ -123,12 +126,16 @@ def build_prosperity_scores(
                 "score_mom_3m": None,
                 "memory_regime": regime,
                 "cycle_phase": "insufficient_data",
+                "unit_value_volume_confirmation": classify_price_volume_confirmation(row),
+                # Backward-compatible field name; the value now says unit_value.
                 "price_volume_confirmation": classify_price_volume_confirmation(row),
                 "revenue_confirmation": classify_revenue_confirmation(row),
                 "score_confidence": len(available) / len(SCORED_INDICATORS),
                 "valid_indicator_count": len(available),
                 "value_score": _component_score(components["export_value_yoy_pct"]),
                 "volume_score": _component_score(components["export_quantity_yoy_pct"]),
+                "unit_value_score": _component_score(components["unit_price_yoy_pct"]),
+                # Backward-compatible alias.
                 "price_score": _component_score(components["unit_price_yoy_pct"]),
                 "momentum_score": _component_score(components["unit_price_mom_1m_pct"]),
                 "export_value_component": components["export_value_yoy_pct"],
@@ -139,7 +146,8 @@ def build_prosperity_scores(
                 "export_quantity_index": row.get("export_quantity_index"),
                 "export_volume_basis": row.get("export_volume_basis"),
                 "export_value_usd": row.get("export_value_usd"),
-                "score_method": "65% price cycle + 35% export-volume cycle; export value diagnostic only",
+                "score_method": "65% export-unit-value cycle + 35% export-volume cycle; export value diagnostic only",
+                "signal_basis": "korean_export_unit_value_and_weight_or_quantity_proxy",
                 "model_version": MODEL_VERSION,
             }
         )
@@ -176,7 +184,7 @@ def classify_cycle_phase(row: dict[str, object]) -> str:
     if score >= 75 and (volume_yoy or 0) > 0 and (price_yoy or 0) > 0:
         return "broad_based_boom"
     if score >= 75 and (price_yoy or 0) > 0:
-        return "price_led_boom"
+        return "unit_value_led_boom"
     if score >= 60 and (price_mom or 0) > 0 and (score_change or 0) > 0:
         return "recovery"
     if score >= 60:
@@ -196,12 +204,12 @@ def classify_price_volume_confirmation(row: dict[str, object]) -> str:
     if price_yoy is None or volume_yoy is None:
         return "insufficient_data"
     if price_yoy > 0 and volume_yoy > 0:
-        return "price_and_volume_up"
+        return "unit_value_and_volume_up"
     if price_yoy > 0 and volume_yoy <= 0:
-        return "price_up_volume_weak"
+        return "unit_value_up_volume_weak"
     if price_yoy <= 0 and volume_yoy > 0:
-        return "price_weak_volume_up"
-    return "price_and_volume_weak"
+        return "unit_value_weak_volume_up"
+    return "unit_value_and_volume_weak"
 
 
 def classify_revenue_confirmation(row: dict[str, object]) -> str:
@@ -372,7 +380,7 @@ def _rolling_field_average(
         value = parse_number(row.get(field)) if row else None
         if value is not None:
             values.append(value)
-    if not values:
+    if len(values) != window:
         return None
     return sum(values) / len(values)
 
@@ -430,7 +438,7 @@ def _rolling_score_average(
         score = parse_number(row.get("memory_score")) if row else None
         if score is not None:
             scores.append(score)
-    if not scores:
+    if len(scores) != window:
         return None
     return sum(scores) / len(scores)
 

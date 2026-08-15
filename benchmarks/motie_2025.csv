@@ -1,0 +1,61 @@
+month,benchmark_key,benchmark_label,benchmark_type,project_category,value,unit,source_url
+2025-01,official_memory_export,Official ICT memory-semiconductor exports,export_value_usd,ict_memory_semiconductors,6180000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-02,official_memory_export,Official ICT memory-semiconductor exports,export_value_usd,ict_memory_semiconductors,5810000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-03,official_memory_export,Official ICT memory-semiconductor exports,export_value_usd,ict_memory_semiconductors,8820000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-04,official_memory_export,Official ICT memory-semiconductor exports,export_value_usd,ict_memory_semiconductors,7130000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-05,official_memory_export,Official ICT memory-semiconductor exports,export_value_usd,ict_memory_semiconductors,9050000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-06,official_memory_export,Official ICT memory-semiconductor exports,export_value_usd,ict_memory_semiconductors,10440000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-07,official_memory_export,Official ICT memory-semiconductor exports,export_value_usd,ict_memory_semiconductors,9470000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-08,official_memory_export,Official ICT memory-semiconductor exports,export_value_usd,ict_memory_semiconductors,10490000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-01,official_dram_export,Official ICT DRAM exports,export_value_usd,ict_dram,3250000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-02,official_dram_export,Official ICT DRAM exports,export_value_usd,ict_dram,2770000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-03,official_dram_export,Official ICT DRAM exports,export_value_usd,ict_dram,4230000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-04,official_dram_export,Official ICT DRAM exports,export_value_usd,ict_dram,3480000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-05,official_dram_export,Official ICT DRAM exports,export_value_usd,ict_dram,3960000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-06,official_dram_export,Official ICT DRAM exports,export_value_usd,ict_dram,4500000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-07,official_dram_export,Official ICT DRAM exports,export_value_usd,ict_dram,4290000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-08,official_dram_export,Official ICT DRAM exports,export_value_usd,ict_dram,4600000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-01,official_nand_export,Official ICT NAND Flash exports,export_value_usd,flash_memory,310000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-02,official_nand_export,Official ICT NAND Flash exports,export_value_usd,flash_memory,290000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-03,official_nand_export,Official ICT NAND Flash exports,export_value_usd,flash_memory,530000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-04,official_nand_export,Official ICT NAND Flash exports,export_value_usd,flash_memory,430000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-05,official_nand_export,Official ICT NAND Flash exports,export_value_usd,flash_memory,560000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-06,official_nand_export,Official ICT NAND Flash exports,export_value_usd,flash_memory,620000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-07,official_nand_export,Official ICT NAND Flash exports,export_value_usd,flash_memory,470000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-08,official_nand_export,Official ICT NAND Flash exports,export_value_usd,flash_memory,650000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-01,official_mcp_export,Official ICT memory MCP exports,export_value_usd,multichip_memory,2240000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-02,official_mcp_export,Official ICT memory MCP exports,export_value_usd,multichip_memory,2290000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-03,official_mcp_export,Official ICT memory MCP exports,export_value_usd,multichip_memory,3660000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-04,official_mcp_export,Official ICT memory MCP exports,export_value_usd,multichip_memory,2850000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-05,official_mcp_export,Official ICT memory MCP exports,export_value_usd,multichip_memory,4010000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-06,official_mcp_export,Official ICT memory MCP exports,export_value_usd,multichip_memory,4690000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-07,official_mcp_export,Official ICT memory MCP exports,export_value_usd,multichip_memory,4190000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-08,official_mcp_export,Official ICT memory MCP exports,export_value_usd,multichip_memory,4600000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-01,official_mco_export,Official ICT memory MCO exports,export_value_usd,mco_memory,360000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-02,official_mco_export,Official ICT memory MCO exports,export_value_usd,mco_memory,430000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-03,official_mco_export,Official ICT memory MCO exports,export_value_usd,mco_memory,370000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-04,official_mco_export,Official ICT memory MCO exports,export_value_usd,mco_memory,350000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-05,official_mco_export,Official ICT memory MCO exports,export_value_usd,mco_memory,490000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-06,official_mco_export,Official ICT memory MCO exports,export_value_usd,mco_memory,600000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-07,official_mco_export,Official ICT memory MCO exports,export_value_usd,mco_memory,470000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-08,official_mco_export,Official ICT memory MCO exports,export_value_usd,mco_memory,610000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-05,official_ssd_export,Official ICT SSD exports,export_value_usd,solid_state_media,910000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-06,official_ssd_export,Official ICT SSD exports,export_value_usd,solid_state_media,1130000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-07,official_ssd_export,Official ICT SSD exports,export_value_usd,solid_state_media,750000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-08,official_ssd_export,Official ICT SSD exports,export_value_usd,solid_state_media,1030000000,USD,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-01,dram_ddr4_8gb,DDR4 8Gb fixed price,market_price,dram,1.4,USD_per_chip,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-02,dram_ddr4_8gb,DDR4 8Gb fixed price,market_price,dram,1.4,USD_per_chip,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-03,dram_ddr4_8gb,DDR4 8Gb fixed price,market_price,dram,1.4,USD_per_chip,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-04,dram_ddr4_8gb,DDR4 8Gb fixed price,market_price,dram,1.7,USD_per_chip,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-05,dram_ddr4_8gb,DDR4 8Gb fixed price,market_price,dram,2.1,USD_per_chip,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-06,dram_ddr4_8gb,DDR4 8Gb fixed price,market_price,dram,2.6,USD_per_chip,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-07,dram_ddr4_8gb,DDR4 8Gb fixed price,market_price,dram,3.9,USD_per_chip,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-08,dram_ddr4_8gb,DDR4 8Gb fixed price,market_price,dram,5.7,USD_per_chip,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-01,nand_128gb,NAND 128Gb fixed price,market_price,flash_memory,2.2,USD_per_chip,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-02,nand_128gb,NAND 128Gb fixed price,market_price,flash_memory,2.3,USD_per_chip,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-03,nand_128gb,NAND 128Gb fixed price,market_price,flash_memory,2.5,USD_per_chip,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-04,nand_128gb,NAND 128Gb fixed price,market_price,flash_memory,2.8,USD_per_chip,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-05,nand_128gb,NAND 128Gb fixed price,market_price,flash_memory,2.9,USD_per_chip,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-06,nand_128gb,NAND 128Gb fixed price,market_price,flash_memory,3.1,USD_per_chip,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-07,nand_128gb,NAND 128Gb fixed price,market_price,flash_memory,3.4,USD_per_chip,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main
+2025-08,nand_128gb,NAND 128Gb fixed price,market_price,flash_memory,3.4,USD_per_chip,https://www.motie.go.kr/search/search.do?category=c1&kwd=8%EC%9B%94&site=main

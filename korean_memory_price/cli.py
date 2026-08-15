@@ -37,6 +37,7 @@ from .prosperity import (
 )
 from .trass import load_trass_export
 from .utils import month_to_yymm, parse_number, write_csv_rows
+from .validation import EXTERNAL_VALIDATION_COLUMNS, build_external_validation
 
 
 DEFAULT_HS_CODES = DEFAULT_FETCH_HS_CODES
@@ -74,6 +75,14 @@ def build_parser() -> argparse.ArgumentParser:
     price.add_argument("--category-index-out", help="Optional category-level price index CSV path.")
     price.add_argument("--overall-out", help="Optional overall memory prosperity CSV path.")
     price.add_argument("--backtest-out", help="Optional historical prosperity backtest CSV path.")
+    price.add_argument(
+        "--external-benchmark",
+        help="Optional external benchmark CSV for classification and price-proxy checks.",
+    )
+    price.add_argument(
+        "--validation-out",
+        help="External validation CSV path; requires --external-benchmark.",
+    )
     add_category_args(price)
     price.set_defaults(func=cmd_price)
 
@@ -84,11 +93,24 @@ def build_parser() -> argparse.ArgumentParser:
     chart.add_argument("--outdir", required=True, help="Chart output directory.")
     chart.set_defaults(func=cmd_chart)
 
+    validate = subparsers.add_parser(
+        "validate",
+        help="Compare a category index CSV with an external benchmark CSV.",
+    )
+    validate.add_argument("--category-index", required=True)
+    validate.add_argument("--benchmark", required=True)
+    validate.add_argument("--out", required=True)
+    validate.set_defaults(func=cmd_validate)
+
     run = subparsers.add_parser("run", help="Run KCS fetch and memory prosperity calculation.")
     add_kcs_args(run)
     add_category_args(run)
     run.add_argument("--trass-file", action="append", default=[], help="Optional TRASS export file to merge.")
     run.add_argument("--no-charts", action="store_true", help="Do not render PNG charts.")
+    run.add_argument(
+        "--external-benchmark",
+        help="Optional external benchmark CSV for classification and price-proxy checks.",
+    )
     run.add_argument("--outdir", required=True, help="Output directory.")
     run.set_defaults(func=cmd_run)
     return parser
@@ -151,6 +173,7 @@ def cmd_price(args: argparse.Namespace) -> int:
     score_rows = build_prosperity_scores(index_rows)
     overall_rows = build_overall_prosperity_index(score_rows, category_rows)
     backtest_rows = build_prosperity_backtest(index_rows, score_rows)
+    validation_rows = _build_requested_validation(args, category_rows)
     write_csv_rows(unit_rows, args.out, UNIT_PRICE_COLUMNS)
     write_csv_rows(index_rows, args.index_out, INDEX_COLUMNS)
     if args.category_index_out:
@@ -161,6 +184,14 @@ def cmd_price(args: argparse.Namespace) -> int:
         write_csv_rows(overall_rows, args.overall_out, OVERALL_PROSPERITY_COLUMNS)
     if args.backtest_out:
         write_csv_rows(backtest_rows, args.backtest_out, BACKTEST_COLUMNS)
+    if validation_rows is not None:
+        if not args.validation_out:
+            raise SystemExit("--validation-out is required with --external-benchmark.")
+        write_csv_rows(
+            validation_rows,
+            args.validation_out,
+            EXTERNAL_VALIDATION_COLUMNS,
+        )
     summary = latest_summary(index_rows)
     print(f"Wrote {len(unit_rows)} unit value rows to {args.out}")
     print(f"Wrote {len(index_rows)} memory index rows to {args.index_out}")
@@ -172,6 +203,8 @@ def cmd_price(args: argparse.Namespace) -> int:
         print(f"Wrote {len(overall_rows)} overall memory prosperity rows to {args.overall_out}")
     if args.backtest_out:
         print(f"Wrote {len(backtest_rows)} prosperity backtest rows to {args.backtest_out}")
+    if validation_rows is not None:
+        print(f"Wrote {len(validation_rows)} external validation rows to {args.validation_out}")
     if summary:
         print(
             "Latest memory index: "
@@ -210,6 +243,16 @@ def cmd_chart(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_validate(args: argparse.Namespace) -> int:
+    category_rows = _read_generic_csv(args.category_index)
+    benchmark_rows = _read_generic_csv(args.benchmark)
+    validation_rows = build_external_validation(category_rows, benchmark_rows)
+    write_csv_rows(validation_rows, args.out, EXTERNAL_VALIDATION_COLUMNS)
+    print(f"Wrote {len(validation_rows)} external validation rows to {args.out}")
+    print_external_validation_summary(validation_rows)
+    return 0
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     outdir = Path(args.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
@@ -226,6 +269,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     score_path = outdir / "memory_prosperity_score.csv"
     overall_path = outdir / "memory_overall_prosperity.csv"
     backtest_path = outdir / "memory_prosperity_backtest.csv"
+    validation_path = outdir / "memory_external_validation.csv"
     chart_dir = outdir / "charts"
 
     write_trade_records(all_records, trade_path)
@@ -236,12 +280,19 @@ def cmd_run(args: argparse.Namespace) -> int:
     score_rows = build_prosperity_scores(index_rows)
     overall_rows = build_overall_prosperity_index(score_rows, category_rows)
     backtest_rows = build_prosperity_backtest(index_rows, score_rows)
+    validation_rows = _build_requested_validation(args, category_rows)
     write_csv_rows(unit_rows, unit_path, UNIT_PRICE_COLUMNS)
     write_csv_rows(index_rows, index_path, INDEX_COLUMNS)
     write_csv_rows(category_rows, category_index_path, CATEGORY_INDEX_COLUMNS)
     write_csv_rows(score_rows, score_path, PROSPERITY_COLUMNS)
     write_csv_rows(overall_rows, overall_path, OVERALL_PROSPERITY_COLUMNS)
     write_csv_rows(backtest_rows, backtest_path, BACKTEST_COLUMNS)
+    if validation_rows is not None:
+        write_csv_rows(
+            validation_rows,
+            validation_path,
+            EXTERNAL_VALIDATION_COLUMNS,
+        )
 
     if not args.no_charts:
         chart_dir.mkdir(parents=True, exist_ok=True)
@@ -263,6 +314,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"Wrote memory prosperity score to {score_path}")
     print(f"Wrote overall memory prosperity to {overall_path}")
     print(f"Wrote prosperity backtest to {backtest_path}")
+    if validation_rows is not None:
+        print(f"Wrote external validation to {validation_path}")
+        print_external_validation_summary(validation_rows)
     if not args.no_charts:
         print(f"Wrote charts to {chart_dir}")
     print_latest_category_growth_summary(category_rows)
@@ -375,6 +429,31 @@ def format_latest_category_growth_lines(
                 f"MoM {_format_pct(row.get('unit_price_mom_1m_pct'))}"
             )
     return lines
+
+
+def print_external_validation_summary(rows: list[dict[str, object]]) -> None:
+    if not rows:
+        print("External validation: no overlapping observations.")
+        return
+    print("External validation:")
+    for row in rows:
+        print(
+            f"  {row.get('benchmark_label') or row.get('benchmark_key')}: "
+            f"{row.get('validation_status')} (n={row.get('sample_count')})"
+        )
+
+
+def _build_requested_validation(
+    args: argparse.Namespace,
+    category_rows: list[dict[str, object]],
+) -> list[dict[str, object]] | None:
+    benchmark_path = getattr(args, "external_benchmark", None)
+    if not benchmark_path:
+        return None
+    return build_external_validation(
+        category_rows,
+        _read_generic_csv(benchmark_path),
+    )
 
 
 def _format_pct(value: object) -> str:

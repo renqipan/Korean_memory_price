@@ -33,7 +33,6 @@ PALETTE = {
 CATEGORY_OVERVIEW_KEYS = (
     "semiconductor_memory",
     "solid_state_media",
-    "storage_devices",
 )
 
 CHART_FONT_SIZES = {
@@ -194,8 +193,10 @@ def _render_line_chart(
             low -= 1.0
             high += 1.0
         padding = (high - low) * 0.08
-        low -= padding
-        high += padding
+        if y_min is None:
+            low -= padding
+        if y_max is None:
+            high += padding
 
     def x_pos(index: int) -> float:
         if len(months) == 1:
@@ -294,7 +295,7 @@ def _render_single_category_price_trend_svg(
         rows=filtered_rows,
         series=[("category_price_index", label)],
         path=path,
-        title=f"{label} Unit Price Index",
+        title=f"{label} Export Unit Value Index",
         y_label="index",
         zero_line=False,
         y_min=0.0,

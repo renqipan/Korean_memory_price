@@ -33,7 +33,18 @@ class MetricsTests(unittest.TestCase):
                 if matches_category(hs_code, category)
             ]
             self.assertEqual(matches, [expected_category])
-        self.assertEqual(DEFAULT_FETCH_HS_CODES, ["854232", "852351", "847170"])
+        self.assertEqual(
+            DEFAULT_FETCH_HS_CODES,
+            ["854232", "8473304060", "852351", "847170"],
+        )
+
+    def test_official_ict_dram_scope_includes_ic_and_module(self):
+        categories = {category.key: category for category in DEFAULT_MEMORY_CATEGORIES}
+        self.assertTrue(matches_category("8542321010", categories["ict_dram"]))
+        self.assertTrue(matches_category("8473304060", categories["ict_dram"]))
+        self.assertFalse(matches_category("8473304060", categories["semiconductor_memory"]))
+        self.assertEqual(categories["dram"].label, "DRAM IC")
+        self.assertFalse(categories["dram_module"].prosperity_eligible)
 
     def test_unit_price_and_index(self):
         records = [
@@ -159,6 +170,29 @@ class MetricsTests(unittest.TestCase):
         unit_rows = build_unit_price_rows(records)
         self.assertTrue(all(row["unit_price_basis"] == "kg" for row in unit_rows))
         self.assertEqual(unit_rows[-1]["unit_price_metric"], 140.0)
+
+    def test_basis_choice_does_not_depend_on_requested_history(self):
+        records = [
+            TradeRecord(
+                month="2024-01",
+                hs_code="8542321010",
+                export_value_usd=100,
+                export_weight_kg=10,
+            ),
+            TradeRecord(
+                month="2024-02",
+                hs_code="8542321010",
+                export_value_usd=120,
+                export_weight_kg=10,
+                export_quantity=5,
+                quantity_unit="EA",
+            ),
+        ]
+        full = build_unit_price_rows(records)
+        later = build_unit_price_rows(records[1:])
+        self.assertEqual(full[-1]["unit_price_basis"], "kg")
+        self.assertEqual(later[0]["unit_price_basis"], "kg")
+        self.assertEqual(full[-1]["unit_price_metric"], later[0]["unit_price_metric"])
 
     def test_category_indexes_split_memory_segments(self):
         records = [

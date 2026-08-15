@@ -1,4 +1,4 @@
-# Memory prosperity v5 historical backtest
+# Memory prosperity v5.1 historical backtest
 
 ## Test definition
 
@@ -12,16 +12,16 @@
 - Expansion signal: score >= 60; contraction signal: score < 45.
 - Evaluation date: 2026-08-15.
 
-The score at month `t` is paired only with a later index observation, so the target is not used to calculate that month's score. Parameters are fixed before the comparison; this report does not optimize weights against the reported target returns.
+The score at month `t` is paired only with a later index observation, so the future target is not used to calculate that month's score. This is nevertheless a retrospective full-history diagnostic, not a held-out or independently specified out-of-sample test. The model design was reviewed using historical behavior, and horizons longer than one month contain overlapping future windows.
 
-## v5 results
+## v5.1 results
 
 | Horizon | Pairs | Correlation | Direction hit rate | Expansion average | Contraction average | Spread | Status |
 |---:|---:|---:|---:|---:|---:|---:|---|
-| 1 month | 126 | 0.318 | 64.6% | +4.87% | -2.00% | +6.87 pp | supportive |
-| 3 months | 124 | 0.468 | 76.3% | +15.49% | -5.95% | +21.43 pp | supportive |
-| 6 months | 121 | 0.331 | 63.6% | +26.91% | -1.22% | +28.13 pp | supportive |
-| 12 months | 115 | 0.045 | 59.7% | +32.12% | +22.29% | +9.83 pp | mixed |
+| 1 month | 126 | 0.318 | 64.6% | +4.87% | -2.00% | +6.87 pp | supportive_internal |
+| 3 months | 124 | 0.468 | 76.3% | +15.49% | -5.95% | +21.43 pp | supportive_internal |
+| 6 months | 121 | 0.331 | 63.6% | +26.91% | -1.22% | +28.13 pp | supportive_internal |
+| 12 months | 115 | 0.045 | 59.7% | +32.12% | +22.29% | +9.83 pp | mixed_internal |
 
 The model provides useful separation at one to six months. The twelve-month correlation is close to zero, so the score should be interpreted as a coincident/short-to-medium-cycle indicator rather than a reliable one-year forecasting signal.
 
@@ -43,4 +43,4 @@ Removing the independent export-value weight and replacing hard clipping with sm
 - HSK ten-digit classifications can change over time, although the core six-digit scope is more stable.
 - Future-return windows overlap, so observations are not statistically independent.
 - The report uses the latest retrieved historical series and does not model later KCS revisions.
-- No external DRAM/NAND contract-price series is bundled, so this validates internal cycle separation rather than agreement with a third-party price benchmark.
+- Internal results validate historical cycle separation only. The separate official benchmark comparison in [external_validation.md](external_validation.md) shows that export unit value is not interchangeable with a DRAM/NAND market-price series.

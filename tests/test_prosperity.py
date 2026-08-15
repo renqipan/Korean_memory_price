@@ -43,12 +43,22 @@ class ProsperityTests(unittest.TestCase):
         self.assertAlmostEqual(scores[0]["memory_score"], 77.83974358974359)
         self.assertEqual(scores[0]["memory_regime"], "boom")
         self.assertEqual(scores[0]["cycle_phase"], "broad_based_boom")
-        self.assertEqual(scores[0]["price_volume_confirmation"], "price_and_volume_up")
+        self.assertEqual(
+            scores[0]["unit_value_volume_confirmation"],
+            "unit_value_and_volume_up",
+        )
+        self.assertEqual(
+            scores[0]["price_volume_confirmation"],
+            "unit_value_and_volume_up",
+        )
         self.assertAlmostEqual(scores[0]["price_score"], 77.77777777777777)
         self.assertAlmostEqual(scores[1]["memory_score"], 22.16025641025641)
         self.assertEqual(scores[1]["memory_regime"], "downturn")
         self.assertAlmostEqual(scores[1]["score_mom_1m"], -55.67948717948718)
-        self.assertEqual(scores[1]["price_volume_confirmation"], "price_and_volume_weak")
+        self.assertEqual(
+            scores[1]["price_volume_confirmation"],
+            "unit_value_and_volume_weak",
+        )
 
     def test_score_trends_use_calendar_months(self):
         rows = [
@@ -79,6 +89,8 @@ class ProsperityTests(unittest.TestCase):
         self.assertAlmostEqual(scores[1]["score_mom_1m"], 27.83974358974359)
         self.assertIsNone(scores[2]["score_mom_1m"])
         self.assertAlmostEqual(scores[2]["score_mom_3m"], -27.83974358974359)
+        self.assertIsNone(scores[1]["memory_score_3m_avg"])
+        self.assertIsNone(scores[2]["memory_score_3m_avg"])
 
     def test_score_requires_at_least_three_indicators(self):
         scores = build_prosperity_scores(

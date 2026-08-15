@@ -95,18 +95,26 @@ def build_unit_price_rows(records: Iterable[TradeRecord]) -> list[dict[str, obje
             }
         )
 
-    basis_by_hs = _choose_stable_basis_by_hs(base_rows)
     rows: list[dict[str, object]] = []
     for row in base_rows:
-        basis = basis_by_hs.get(str(row["hs_code"]), "kg")
-        if basis == "quantity":
-            unit_price_metric = row.get("unit_usd_per_quantity")
-            export_volume = row.get("export_quantity")
-            volume_basis = row.get("quantity_unit") or "quantity"
-        else:
+        # The basis must depend only on the observation itself.  Choosing it
+        # from counts over the requested history made the same month switch
+        # between kg and quantity when --start changed.
+        weight = parse_number(row.get("export_weight_kg"))
+        quantity = parse_number(row.get("export_quantity"))
+        quantity_unit = str(row.get("quantity_unit") or "").strip()
+        if weight is not None and weight > 0:
             unit_price_metric = row.get("unit_usd_per_kg")
             export_volume = row.get("export_weight_kg")
             volume_basis = "kg"
+        elif quantity is not None and quantity > 0 and quantity_unit not in {"", "mixed"}:
+            unit_price_metric = row.get("unit_usd_per_quantity")
+            export_volume = row.get("export_quantity")
+            volume_basis = quantity_unit
+        else:
+            unit_price_metric = None
+            export_volume = None
+            volume_basis = ""
         row["unit_price_metric"] = unit_price_metric
         row["unit_price_basis"] = volume_basis
         row["export_volume"] = export_volume
@@ -390,20 +398,6 @@ def _record_quality_key(record: TradeRecord) -> tuple[int, int, int, int, float]
     source_score = {"trass": 3, "kcs": 2, "manual": 1}.get(_source_group(record.source), 0)
     export_value = parse_number(record.export_value_usd) or 0.0
     return (has_value, has_quantity, has_weight, source_score, export_value)
-
-
-def _choose_stable_basis_by_hs(rows: list[dict[str, object]]) -> dict[str, str]:
-    counts: dict[str, dict[str, int]] = defaultdict(lambda: {"quantity": 0, "kg": 0})
-    for row in rows:
-        hs_code = str(row["hs_code"])
-        if parse_number(row.get("unit_usd_per_quantity")) is not None:
-            counts[hs_code]["quantity"] += 1
-        if parse_number(row.get("unit_usd_per_kg")) is not None:
-            counts[hs_code]["kg"] += 1
-    return {
-        hs_code: "quantity" if values["quantity"] >= values["kg"] and values["quantity"] > 0 else "kg"
-        for hs_code, values in counts.items()
-    }
 
 
 def _source_group(source: str) -> str:

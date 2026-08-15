@@ -38,7 +38,7 @@ class KCSClient:
             url = self._build_data_go_kr_url(start_yymm, end_yymm, hs_code)
         else:
             raise ValueError("endpoint must be 'data-go-kr' or 'legacy'")
-        request = urllib.request.Request(url, headers={"User-Agent": "korean-memory-price/0.1"})
+        request = urllib.request.Request(url, headers={"User-Agent": "korean-memory-price/0.3"})
         body = self._request_body(request)
         return parse_item_trade_xml(body, requested_hs_code=hs_code, source=f"kcs:{self.endpoint}")
 
