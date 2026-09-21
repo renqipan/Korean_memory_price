@@ -56,7 +56,19 @@ INDEX_COLUMNS = [
     "hs_codes",
     "hs_count",
     "index_weight_method",
+    "index_status",
+    "pricing_value_coverage_pct",
+    "comparison_coverage_mom_1m_pct",
+    "comparison_coverage_yoy_pct",
+    "bilateral_unit_value_mom_1m_pct",
+    "bilateral_unit_value_mom_3m_pct",
+    "bilateral_unit_value_yoy_pct",
+    "chain_index_mom_1m_pct",
+    "chain_index_mom_3m_pct",
+    "chain_index_yoy_pct",
 ]
+
+MIN_COMPARISON_COVERAGE_PCT = 95.0
 
 
 CATEGORY_INDEX_COLUMNS = [
@@ -124,41 +136,43 @@ def build_unit_price_rows(records: Iterable[TradeRecord]) -> list[dict[str, obje
 
 
 def build_memory_index(unit_rows: Iterable[dict[str, object]]) -> list[dict[str, object]]:
-    rows = [
-        dict(row)
-        for row in unit_rows
-        if parse_number(row.get("unit_price_metric")) is not None
-        and parse_number(row.get("unit_price_metric")) != 0
-    ]
+    rows = [dict(row) for row in unit_rows]
     rows.sort(key=lambda row: (str(row["hs_code"]), str(row["month"])))
 
     monthly: dict[str, list[dict[str, object]]] = defaultdict(list)
     for row in rows:
-        price = parse_number(row.get("unit_price_metric"))
-        if price is None or price <= 0:
-            continue
         monthly[str(row["month"])].append(dict(row))
+
+    if monthly:
+        month, last = min(monthly), max(monthly)
+        while month < last:
+            monthly.setdefault(month, [])
+            month = shift_month(month, 1)
 
     index_rows: list[dict[str, object]] = []
     previous_month_rows: list[dict[str, object]] | None = None
     previous_price_index = 100.0
     previous_volume_index = 100.0
     for month, month_rows in sorted(monthly.items()):
+        priced_rows = [r for r in month_rows if (parse_number(r.get("unit_price_metric")) or 0) > 0]
+        total_value = sum(parse_number(r.get("export_value_usd")) or 0.0 for r in month_rows)
+        priced_value = sum(parse_number(r.get("export_value_usd")) or 0.0 for r in priced_rows)
+        pricing_coverage = safe_div(priced_value * 100.0, total_value)
         if previous_month_rows is None:
-            weighted_index = 100.0
-            weighted_volume_index = 100.0
+            weighted_index = 100.0 if (pricing_coverage or 0) >= MIN_COMPARISON_COVERAGE_PCT else None
+            weighted_volume_index = weighted_index
         else:
             price_ratio = _bilateral_price_ratio(month_rows, previous_month_rows)
             weighted_index = (
                 previous_price_index * price_ratio
-                if price_ratio is not None
-                else previous_price_index
+                if price_ratio is not None and previous_price_index is not None
+                else None
             )
             volume_ratio = _bilateral_volume_ratio(month_rows, previous_month_rows)
             weighted_volume_index = (
                 previous_volume_index * volume_ratio
-                if volume_ratio is not None
-                else previous_volume_index
+                if volume_ratio is not None and previous_volume_index is not None
+                else None
             )
         volume_basis = _common_basis(month_rows)
         index_rows.append(
@@ -167,13 +181,15 @@ def build_memory_index(unit_rows: Iterable[dict[str, object]]) -> list[dict[str,
                 "unit_price_index": weighted_index,
                 "memory_index": weighted_index,
                 "export_quantity_index": weighted_volume_index,
-                "export_value_usd": sum(parse_number(row.get("export_value_usd")) or 0.0 for row in month_rows),
-                "export_weight_kg": sum(parse_number(row.get("export_weight_kg")) or 0.0 for row in month_rows),
-                "export_volume": sum(parse_number(row.get("export_volume")) or 0.0 for row in month_rows),
+                "export_value_usd": total_value if month_rows else None,
+                "export_weight_kg": _sum_numbers(row.get("export_weight_kg") for row in month_rows),
+                "export_volume": _sum_numbers(row.get("export_volume") for row in month_rows) if volume_basis != "mixed_index" else None,
                 "export_volume_basis": volume_basis,
                 "hs_codes": ";".join(sorted({str(row["hs_code"]) for row in month_rows})),
                 "hs_count": len({str(row["hs_code"]) for row in month_rows}),
                 "index_weight_method": "chain_linked_prior_period_export_value",
+                "index_status": "available" if weighted_index is not None else "broken_chain_or_insufficient_coverage",
+                "pricing_value_coverage_pct": pricing_coverage,
             }
         )
         previous_month_rows = month_rows
@@ -186,9 +202,16 @@ def build_memory_index(unit_rows: Iterable[dict[str, object]]) -> list[dict[str,
     add_bilateral_change_columns(
         index_rows, monthly, "export_volume", "export_volume_basis", "export_quantity"
     )
-    add_bilateral_change_columns(
-        index_rows, monthly, "unit_price_metric", "unit_price_basis", "memory_index"
-    )
+    add_change_columns(index_rows, "unit_price_index", "chain_index")
+    add_change_columns(index_rows, "memory_index", "memory_index")
+    for row in index_rows:
+        for suffix in ("mom_1m", "mom_3m", "yoy"):
+            row[f"bilateral_unit_value_{suffix}_pct"] = row.get(f"unit_price_{suffix}_pct")
+        for lag, suffix in ((1, "mom_1m"), (12, "yoy")):
+            previous = monthly.get(shift_month(str(row["month"]), -lag), [])
+            row[f"comparison_coverage_{suffix}_pct"] = _comparison_coverage(
+                monthly[str(row["month"])], previous, "unit_price_metric", "unit_price_basis"
+            )
     add_change_columns(index_rows, "export_value_usd", "export_value")
     return index_rows
 
@@ -229,6 +252,8 @@ def _bilateral_metric_ratio(
     metric_field: str,
     basis_field: str,
 ) -> float | None:
+    if (_comparison_coverage(current_rows, previous_rows, metric_field, basis_field) or 0) < MIN_COMPARISON_COVERAGE_PCT:
+        return None
     current_by_hs = {str(row.get("hs_code")): row for row in current_rows}
     previous_by_hs = {str(row.get("hs_code")): row for row in previous_rows}
     relatives: list[tuple[float, float]] = []
@@ -239,7 +264,7 @@ def _bilateral_metric_ratio(
             continue
         current_value = parse_number(current.get(metric_field))
         previous_value = parse_number(previous.get(metric_field))
-        if current_value is None or previous_value is None or previous_value <= 0:
+        if current_value is None or current_value <= 0 or previous_value is None or previous_value <= 0:
             continue
         weight = parse_number(previous.get("export_value_usd")) or 0.0
         relatives.append((current_value / previous_value, max(weight, 0.0)))
@@ -249,6 +274,32 @@ def _bilateral_metric_ratio(
     if total_weight <= 0:
         return sum(relative for relative, _ in relatives) / len(relatives)
     return sum(relative * weight for relative, weight in relatives) / total_weight
+
+
+def _comparison_coverage(
+    current_rows: list[dict[str, object]],
+    previous_rows: list[dict[str, object]],
+    metric_field: str,
+    basis_field: str,
+) -> float | None:
+    """Minimum current/prior export-value coverage of usable common codes."""
+    current = {str(r.get("hs_code")): r for r in current_rows}
+    previous = {str(r.get("hs_code")): r for r in previous_rows}
+    common = {
+        hs for hs in current.keys() & previous.keys()
+        if current[hs].get(basis_field)
+        and current[hs].get(basis_field) == previous[hs].get(basis_field)
+        and (parse_number(current[hs].get(metric_field)) or 0) > 0
+        and (parse_number(previous[hs].get(metric_field)) or 0) > 0
+    }
+    coverages = []
+    for period in (current, previous):
+        total = sum(max(0.0, parse_number(r.get("export_value_usd")) or 0.0) for r in period.values())
+        matched = sum(max(0.0, parse_number(period[h].get("export_value_usd")) or 0.0) for h in common)
+        if total <= 0:
+            return None
+        coverages.append(100.0 * matched / total)
+    return min(coverages)
 
 
 def add_bilateral_change_columns(
@@ -346,11 +397,27 @@ def _dedupe_trade_records(records: Iterable[TradeRecord]) -> list[TradeRecord]:
     candidates: dict[tuple[str, str], list[TradeRecord]] = defaultdict(list)
     for (month, hs_code, _), group in grouped.items():
         unique_group = list({_trade_record_signature(record): record for record in group}.values())
+        if len(unique_group) > 1:
+            raise ValueError(f"Conflicting snapshots for {month} HS {hs_code}; select one version before importing")
         candidates[(month, hs_code)].append(_aggregate_record_group(unique_group))
 
     selected: list[TradeRecord] = []
     for key in sorted(candidates):
+        # Sources must agree on shared numeric measurements before selection.
+        group = candidates[key]
+        for field in ("export_value_usd", "export_weight_kg"):
+            values = {parse_number(getattr(record, field)) for record in group}
+            values.discard(None)
+            if len(values) > 1:
+                raise ValueError(f"Conflicting sources for {key[0]} HS {key[1]}: {field}")
         selected.append(max(candidates[key], key=_record_quality_key))
+    by_month: dict[str, list[str]] = defaultdict(list)
+    for record in selected:
+        by_month[record.month].append(record.hs_code)
+    for month, codes in by_month.items():
+        for code in codes:
+            if any(other != code and other.startswith(code) for other in codes):
+                raise ValueError(f"Overlapping HS scopes for {month}: {code}; use nonoverlapping leaf codes")
     return selected
 
 
@@ -359,7 +426,6 @@ def _trade_record_signature(record: TradeRecord) -> tuple[object, ...]:
     return (
         record.month,
         record.hs_code,
-        record.item_name,
         parse_number(record.export_value_usd),
         parse_number(record.export_weight_kg),
         parse_number(record.export_quantity),
@@ -392,9 +458,9 @@ def _aggregate_record_group(records: list[TradeRecord]) -> TradeRecord:
 
 
 def _record_quality_key(record: TradeRecord) -> tuple[int, int, int, int, float]:
-    has_value = 1 if parse_number(record.export_value_usd) is not None else 0
-    has_quantity = 1 if parse_number(record.export_quantity) is not None else 0
-    has_weight = 1 if parse_number(record.export_weight_kg) is not None else 0
+    has_value = int((parse_number(record.export_value_usd) or 0) > 0)
+    has_quantity = int((parse_number(record.export_quantity) or 0) > 0 and record.quantity_unit not in {"", "mixed"})
+    has_weight = int((parse_number(record.export_weight_kg) or 0) > 0)
     source_score = {"trass": 3, "kcs": 2, "manual": 1}.get(_source_group(record.source), 0)
     export_value = parse_number(record.export_value_usd) or 0.0
     return (has_value, has_quantity, has_weight, source_score, export_value)

@@ -74,7 +74,7 @@ class KCSParserTests(unittest.TestCase):
             retry_backoff_seconds=0.01,
         )
 
-        records = client.fetch_item_trade("202401", "202401", "854232")
+        records = client.fetch_item_trade("201701", "201701", "010619")
 
         self.assertEqual(len(records), 1)
         self.assertEqual(urlopen.call_count, 2)

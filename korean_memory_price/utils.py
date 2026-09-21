@@ -4,6 +4,7 @@ import csv
 import math
 import os
 import re
+from decimal import Decimal, InvalidOperation
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -13,7 +14,7 @@ def parse_number(value: object) -> float | None:
     if value is None:
         return None
     if isinstance(value, (int, float)):
-        if isinstance(value, float) and math.isnan(value):
+        if not math.isfinite(value):
             return None
         return float(value)
     text = str(value).strip()
@@ -33,7 +34,7 @@ def parse_number(value: object) -> float | None:
         number = float(text)
     except ValueError:
         return None
-    return -number if negative else number
+    return (-number if negative else number) if math.isfinite(number) else None
 
 
 def safe_div(numerator: object, denominator: object) -> float | None:
@@ -55,7 +56,22 @@ def pct_change(current: object, previous: object) -> float | None:
 def normalize_hs_code(value: object) -> str:
     if value is None:
         return ""
-    return re.sub(r"\D", "", str(value))
+    text = str(value).strip()
+    if text in {"", "-"}:
+        return ""
+    if isinstance(value, (int, float)) or re.fullmatch(r"\d+\.0+|\d+(?:\.\d+)?[eE][+\-]?\d+", text):
+        try:
+            number = Decimal(text)
+            if not number.is_finite() or number != number.to_integral_value():
+                raise ValueError("HS code must be an integer identifier")
+            text = str(int(number))
+        except InvalidOperation as exc:
+            raise ValueError("Invalid numeric HS code") from exc
+    else:
+        text = re.sub(r"[.\s]", "", text)
+    if not text.isdigit() or len(text) not in {2, 4, 6, 8, 10}:
+        raise ValueError(f"Invalid HS code {value!r}; preserve leading zeros as text")
+    return text
 
 
 def normalize_month(value: object) -> str:

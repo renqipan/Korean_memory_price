@@ -19,6 +19,9 @@ PROSPERITY_COLUMNS = [
     "price_volume_confirmation",
     "revenue_confirmation",
     "score_confidence",
+    "indicator_completeness",
+    "comparison_coverage_mom_1m_pct",
+    "comparison_coverage_yoy_pct",
     "valid_indicator_count",
     "value_score",
     "volume_score",
@@ -48,6 +51,8 @@ OVERALL_PROSPERITY_COLUMNS = [
     "overall_memory_regime",
     "core_memory_score",
     "category_breadth_score",
+    "category_unit_value_cycle_score",
+    "category_signal_coverage_pct",
     "category_positive_share_pct",
     "category_positive_count",
     "category_valid_count",
@@ -57,12 +62,12 @@ OVERALL_PROSPERITY_COLUMNS = [
 ]
 
 
-MODEL_VERSION = "memory-prosperity-v5.1"
+MODEL_VERSION = "memory-prosperity-v5.2"
 
-OVERALL_MODEL_VERSION = "overall-memory-prosperity-v3.1"
+OVERALL_MODEL_VERSION = "overall-memory-prosperity-v3.2"
 
 OVERALL_SCORE_WEIGHT = 0.80
-CATEGORY_BREADTH_WEIGHT = 0.20
+CATEGORY_CYCLE_WEIGHT = 0.20
 
 
 MODEL_WEIGHTS = {
@@ -131,6 +136,9 @@ def build_prosperity_scores(
                 "price_volume_confirmation": classify_price_volume_confirmation(row),
                 "revenue_confirmation": classify_revenue_confirmation(row),
                 "score_confidence": len(available) / len(SCORED_INDICATORS),
+                "indicator_completeness": len(available) / len(SCORED_INDICATORS),
+                "comparison_coverage_mom_1m_pct": row.get("comparison_coverage_mom_1m_pct"),
+                "comparison_coverage_yoy_pct": row.get("comparison_coverage_yoy_pct"),
                 "valid_indicator_count": len(available),
                 "value_score": _component_score(components["export_value_yoy_pct"]),
                 "volume_score": _component_score(components["export_quantity_yoy_pct"]),
@@ -242,8 +250,8 @@ def build_overall_prosperity_index(
     for row in sorted(prosperity_rows, key=lambda item: str(item.get("month", ""))):
         month = str(row.get("month", ""))
         core_score = parse_number(row.get("memory_score"))
-        category_summary = _category_breadth_summary(categories_by_month.get(month, []))
-        category_score = category_summary["category_breadth_score"]
+        category_summary = _category_cycle_summary(categories_by_month.get(month, []))
+        category_score = category_summary["category_unit_value_cycle_score"]
         overall_score = _combine_overall_score(core_score, category_score)
         overall_rows.append(
             {
@@ -266,7 +274,7 @@ def build_overall_prosperity_index(
     return overall_rows
 
 
-def _category_breadth_summary(rows: list[dict[str, object]]) -> dict[str, object]:
+def _category_cycle_summary(rows: list[dict[str, object]]) -> dict[str, object]:
     scores: list[tuple[float, float]] = []
     positive_share = 0.0
     valid_share = 0.0
@@ -275,12 +283,10 @@ def _category_breadth_summary(rows: list[dict[str, object]]) -> dict[str, object
     dominant_category = ""
     dominant_share: float | None = None
     for row in rows:
-        share = max(
-            0.0,
-            parse_number(row.get("category_scope_export_value_share_pct"))
-            or parse_number(row.get("category_export_value_share_pct"))
-            or 0.0,
-        )
+        scope_share = parse_number(row.get("category_scope_export_value_share_pct"))
+        if scope_share is None:
+            scope_share = parse_number(row.get("category_export_value_share_pct"))
+        share = max(0.0, scope_share or 0.0)
         if dominant_share is None or share > dominant_share:
             dominant_share = share
             dominant_category = str(row.get("category") or "")
@@ -296,9 +302,12 @@ def _category_breadth_summary(rows: list[dict[str, object]]) -> dict[str, object
             positive_count += 1
             positive_share += share
 
+    cycle_score = _weighted_or_equal_average(scores) if 95.0 <= valid_share <= 100.000001 else None
     return {
-        "category_breadth_score": _weighted_or_equal_average(scores),
-        "category_positive_share_pct": safe_pct(positive_share, valid_share),
+        "category_unit_value_cycle_score": cycle_score,
+        "category_breadth_score": cycle_score,  # Deprecated schema alias, not breadth.
+        "category_signal_coverage_pct": valid_share,
+        "category_positive_share_pct": positive_share if cycle_score is not None else None,
         "category_positive_count": positive_count,
         "category_valid_count": valid_count,
         "dominant_category": dominant_category,
@@ -337,10 +346,10 @@ def _combine_overall_score(
     if total_score is None:
         return None
     if category_score is None:
-        return total_score
+        return None
     return (
         total_score * OVERALL_SCORE_WEIGHT
-        + category_score * CATEGORY_BREADTH_WEIGHT
+        + category_score * CATEGORY_CYCLE_WEIGHT
     )
 
 

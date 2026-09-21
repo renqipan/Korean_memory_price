@@ -90,15 +90,26 @@ def load_trass_export(path: str | Path) -> list[TradeRecord]:
     header_index = _guess_header_index(table)
     headers = [str(cell).strip() for cell in table[header_index]]
     column_map = _build_column_map(headers)
+    required = {"month", "hs_code", "export_value_usd"}
+    if not required.issubset(column_map):
+        raise ValueError(f"TRASS export missing required columns: {sorted(required - column_map.keys())}")
+    if "export_weight_kg" not in column_map and not {"export_quantity", "quantity_unit"}.issubset(column_map):
+        raise ValueError("TRASS export requires weight or quantity with an explicit unit")
     records: list[TradeRecord] = []
-    for values in table[header_index + 1 :]:
+    for row_number, values in enumerate(table[header_index + 1 :], header_index + 2):
         row = {headers[idx]: values[idx] if idx < len(values) else "" for idx in range(len(headers))}
+        if not any(str(value).strip() for value in values):
+            continue
+        if str(row.get(column_map["month"], "")).strip().lower() in {"total", "총계", "합계"}:
+            continue
         try:
             record = _record_from_trass_row(row, column_map, path.name)
-        except ValueError:
-            continue
+        except ValueError as exc:
+            raise ValueError(f"TRASS row {row_number}: {exc}") from exc
         if record:
             records.append(record)
+    if not records:
+        raise ValueError("TRASS export contains no usable trade records")
     return records
 
 
@@ -112,7 +123,7 @@ def _record_from_trass_row(
     month = normalize_month(row.get(column_map["month"]))
     hs_code = normalize_hs_code(row.get(column_map["hs_code"]))
     if not hs_code:
-        return None
+        raise ValueError("Missing HS code")
 
     value_header = column_map.get("export_value_usd")
     weight_header = column_map.get("export_weight_kg")
@@ -121,6 +132,8 @@ def _record_from_trass_row(
 
     export_value = parse_number(row.get(value_header)) if value_header else None
     export_weight = parse_number(row.get(weight_header)) if weight_header else None
+    if export_value is None or export_value < 0:
+        raise ValueError("Export value must be a finite, nonnegative number")
     import_value = parse_number(row.get(import_value_header)) if import_value_header else None
     import_weight = parse_number(row.get(import_weight_header)) if import_weight_header else None
 
@@ -223,8 +236,8 @@ def _xlsx_cell_value(cell: ET.Element, shared_strings: list[str], ns: dict[str, 
     if cell_type == "s":
         index = int(raw)
         return shared_strings[index] if index < len(shared_strings) else ""
-    number = parse_number(raw)
-    return number if number is not None else raw
+    # Identifiers must not acquire a '.0' suffix through float conversion.
+    return raw
 
 
 def _excel_col_index(cell_ref: str) -> int:
@@ -261,6 +274,12 @@ def _build_column_map(headers: list[str]) -> dict[str, str]:
 
 def _normalize_header(value: object) -> str:
     text = str(value).strip().lower()
+    # Only known measurement annotations may be stripped; unknown units fail
+    # the required-column validation instead of silently changing the scale.
+    text = re.sub(
+        r"[\(\[]\s*(?:usd|us\$|\$|kg|kilograms?|tons?|tonnes?|톤|kg|천달러|천불|달러|thousand\s+usd|1,000\s*usd)\s*[\)\]]",
+        "", text,
+    )
     return re.sub(r"[\s_\-./(){}\[\],:$]+", "", text)
 
 

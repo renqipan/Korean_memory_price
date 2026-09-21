@@ -130,7 +130,7 @@ class MetricsTests(unittest.TestCase):
 
         index_rows = build_memory_index(unit_rows)
         self.assertEqual(index_rows[0]["export_value_usd"], 1000.0)
-        self.assertEqual(round(index_rows[1]["unit_price_yoy_pct"], 6), 50.0)
+        self.assertEqual(round(index_rows[-1]["unit_price_yoy_pct"], 6), 50.0)
 
     def test_identical_source_records_are_not_double_counted(self):
         record = TradeRecord(

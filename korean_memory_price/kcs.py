@@ -6,6 +6,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from .models import TradeRecord
 from .utils import current_month, month_to_yymm, normalize_hs_code, parse_number, shift_month, yymm_to_month
@@ -29,6 +30,7 @@ class KCSClient:
     timeout: int = 30
     max_retries: int = 3
     retry_backoff_seconds: float = 0.5
+    snapshot_dir: Path | None = None
 
     def fetch_item_trade(self, start_yymm: str, end_yymm: str, hs_code: str) -> list[TradeRecord]:
         hs_code = normalize_hs_code(hs_code)
@@ -40,7 +42,13 @@ class KCSClient:
             raise ValueError("endpoint must be 'data-go-kr' or 'legacy'")
         request = urllib.request.Request(url, headers={"User-Agent": "korean-memory-price/0.3"})
         body = self._request_body(request)
-        return parse_item_trade_xml(body, requested_hs_code=hs_code, source=f"kcs:{self.endpoint}")
+        records = parse_item_trade_xml(body, requested_hs_code=hs_code, source=f"kcs:{self.endpoint}")
+        if any(not record.hs_code.startswith(hs_code) or not start_yymm <= month_to_yymm(record.month) <= end_yymm for record in records):
+            raise KCSAPIError("KCS response contains records outside the requested month or HS scope")
+        if self.snapshot_dir is not None:
+            self.snapshot_dir.mkdir(parents=True, exist_ok=True)
+            (self.snapshot_dir / f"{hs_code}_{start_yymm}_{end_yymm}.xml").write_text(body, encoding="utf-8")
+        return records
 
     def _request_body(self, request: urllib.request.Request) -> str:
         for attempt in range(self.max_retries + 1):
@@ -48,16 +56,17 @@ class KCSClient:
                 with urllib.request.urlopen(request, timeout=self.timeout) as response:
                     return response.read().decode("utf-8-sig", errors="replace")
             except urllib.error.HTTPError as exc:
+                exc.close()
                 retryable = exc.code == 429 or 500 <= exc.code <= 599
                 if not retryable or attempt >= self.max_retries:
                     raise KCSAPIError(
                         f"KCS request failed after {attempt + 1} attempt(s): HTTP {exc.code}"
-                    ) from exc
+                    ) from None
             except (urllib.error.URLError, TimeoutError) as exc:
                 if attempt >= self.max_retries:
                     raise KCSAPIError(
-                        f"KCS request failed after {attempt + 1} attempt(s): {exc.reason if isinstance(exc, urllib.error.URLError) else exc}"
-                    ) from exc
+                        f"KCS network request failed after {attempt + 1} attempt(s)"
+                    ) from None
             time.sleep(self.retry_backoff_seconds * (2**attempt))
         raise AssertionError("unreachable")
 
@@ -80,15 +89,21 @@ class KCSClient:
         lookback_months: int = 12,
     ) -> str:
         earliest = yymm_to_month(start_month) if start_month else None
-        candidate = current_month()
+        # Never compare a partial calendar month against a full prior month.
+        # API availability still does not establish publication finality.
+        candidate = shift_month(current_month(), -1)
         for _ in range(lookback_months):
             if earliest and candidate < earliest:
                 break
             candidate_yymm = month_to_yymm(candidate)
+            available = bool(hs_codes)
             for hs_code in hs_codes:
                 records = self.fetch_item_trade(candidate_yymm, candidate_yymm, hs_code)
-                if _has_export_data(records):
-                    return candidate_yymm
+                if not _has_export_data(records):
+                    available = False
+                    break
+            if available:
+                return candidate_yymm
             candidate = shift_month(candidate, -1)
         raise KCSAPIError(
             f"No KCS export records found in the last {lookback_months} months "
@@ -186,8 +201,8 @@ def _local_name(tag: str) -> str:
 def _has_export_data(records: list[TradeRecord]) -> bool:
     return any(
         (parse_number(record.export_value_usd) or 0) > 0
-        or (parse_number(record.export_weight_kg) or 0) > 0
-        or (parse_number(record.export_quantity) or 0) > 0
+        and ((parse_number(record.export_weight_kg) or 0) > 0
+             or ((parse_number(record.export_quantity) or 0) > 0 and bool(record.quantity_unit)))
         for record in records
     )
 

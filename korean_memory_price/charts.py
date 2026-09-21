@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 from pathlib import Path
 
 from .categories import DEFAULT_MEMORY_CATEGORIES
-from .utils import ensure_parent, parse_number
+from .utils import ensure_parent, parse_number, shift_month
 
 
 PALETTE = {
@@ -21,6 +21,7 @@ PALETTE = {
     "overall_memory_prosperity_score": "#111827",
     "overall_memory_prosperity_3m_avg": "#dc2626",
     "category_breadth_score": "#2563eb",
+    "category_unit_value_cycle_score": "#2563eb",
     "semiconductor_memory": "#111827",
     "dram": "#b45309",
     "flash_memory": "#2563eb",
@@ -48,7 +49,7 @@ CHART_FONT_SIZES = {
 def _render_memory_indicators_svg(rows: list[dict[str, object]], path: str | Path) -> None:
     series = [
         ("export_value_yoy_pct", "export value YoY"),
-        ("export_quantity_yoy_pct", "export quantity YoY"),
+        ("export_quantity_yoy_pct", "volume proxy YoY"),
         ("unit_price_yoy_pct", "unit value YoY"),
         ("unit_price_mom_1m_pct", "unit value MoM"),
     ]
@@ -97,7 +98,7 @@ def _render_overall_prosperity_svg(
     series = [
         ("overall_memory_prosperity_score", "overall prosperity"),
         ("overall_memory_prosperity_3m_avg", "3m average"),
-        ("category_breadth_score", "category breadth"),
+        ("category_unit_value_cycle_score", "category unit value cycle"),
     ]
     _render_line_chart(
         rows=rows,
@@ -236,15 +237,25 @@ def _render_line_chart(
 
     for key, label in series:
         points = []
+        segments = []
         for idx, row in enumerate(rows):
             value = parse_number(row.get(key))
+            if idx and months[idx] != shift_month(months[idx - 1], 1):
+                segments.append(points)
+                points = []
             if value is None or (log_scale and value <= 0):
+                segments.append(points)
+                points = []
                 continue
             points.append(f"{x_pos(idx):.2f},{y_pos(value):.2f}")
-        if not points:
-            continue
+        segments.append(points)
         color = PALETTE.get(key, "#374151")
-        svg.append(f'<polyline points="{" ".join(points)}" fill="none" stroke="{color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>')
+        for points in segments:
+            if len(points) == 1:
+                x, y = points[0].split(",")
+                svg.append(f'<circle cx="{x}" cy="{y}" r="3" fill="{color}"/>')
+            elif points:
+                svg.append(f'<polyline points="{" ".join(points)}" fill="none" stroke="{color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>')
 
     legend_x = left
     legend_y = height - 28

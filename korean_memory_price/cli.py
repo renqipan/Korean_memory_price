@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 from .backtest import BACKTEST_COLUMNS, build_prosperity_backtest
 from .categories import (
@@ -30,13 +34,15 @@ from .metrics import (
     latest_summary,
 )
 from .prosperity import (
+    MODEL_VERSION,
+    OVERALL_MODEL_VERSION,
     OVERALL_PROSPERITY_COLUMNS,
     PROSPERITY_COLUMNS,
     build_overall_prosperity_index,
     build_prosperity_scores,
 )
 from .trass import load_trass_export
-from .utils import month_to_yymm, parse_number, write_csv_rows
+from .utils import current_month, month_to_yymm, parse_number, write_csv_rows
 from .validation import EXTERNAL_VALIDATION_COLUMNS, build_external_validation
 
 
@@ -121,7 +127,7 @@ def add_kcs_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--end",
         required=True,
-        help="End month, YYYYMM, or latest. 'latest' probes KCS from the current month backward.",
+        help="End month, YYYYMM, or latest. 'latest' probes completed calendar months; finality is unverified.",
     )
     parser.add_argument("--hs", action="append", default=[], help="HS/HSK code. Can be repeated.")
     parser.add_argument("--service-key", help="KCS/data.go.kr service key. Defaults to DATA_GO_KR_SERVICE_KEY.")
@@ -216,6 +222,47 @@ def cmd_price(args: argparse.Namespace) -> int:
     return 0
 
 
+def _write_run_manifest(args, outdir, trade_path, all_records, index_rows):
+    manifest = {
+        "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
+        "requested_start": args.start,
+        "requested_end": args.end,
+        "latest_observed_month": index_rows[-1]["month"] if index_rows else None,
+        "publication_status": "unverified_not_necessarily_final",
+        "raw_snapshot_dir": str(args.snapshot_dir),
+        "trade_sha256": hashlib.sha256(trade_path.read_bytes()).hexdigest(),
+        "record_count": len(all_records),
+        "model_version": MODEL_VERSION,
+        "overall_model_version": OVERALL_MODEL_VERSION,
+        "warnings": [],
+    }
+    if index_rows and str(index_rows[-1]["month"]) >= current_month():
+        manifest["warnings"].append("Explicit end month includes an incomplete calendar month")
+    if index_rows:
+        current_codes = set(str(index_rows[-1]["hs_codes"]).split(";"))
+        prior_codes = {hs for row in index_rows[-13:-1] for hs in str(row["hs_codes"]).split(";")}
+        missing = sorted(prior_codes - current_codes)
+        if missing:
+            manifest["warnings"].append(f"Latest month missing previously observed core HS codes: {missing}")
+        if (parse_number(index_rows[-1].get("pricing_value_coverage_pct")) or 0) < 95:
+            manifest["warnings"].append("Latest month pricing coverage below 95%")
+    else:
+        raise SystemExit("No core memory records returned; no successful run manifest written")
+    snapshot_dir = Path(args.snapshot_dir)
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    manifest["raw_response_sha256"] = {
+        path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(snapshot_dir.glob("*.xml"))
+    }
+    content = json.dumps(manifest, indent=2) + "\n"
+    (snapshot_dir / "run_manifest.json").write_text(content, encoding="utf-8")
+    (outdir / "run_manifest.json").write_text(content, encoding="utf-8")
+    print("Publication status: unverified (API availability is not proof of final statistics).")
+    for warning in manifest["warnings"]:
+        print(f"WARNING: {warning}")
+    return 0
+
+
 def cmd_chart(args: argparse.Namespace) -> int:
     outdir = Path(args.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
@@ -272,7 +319,6 @@ def cmd_run(args: argparse.Namespace) -> int:
     validation_path = outdir / "memory_external_validation.csv"
     chart_dir = outdir / "charts"
 
-    write_trade_records(all_records, trade_path)
     unit_rows = build_unit_price_rows(all_records)
     categories = parse_categories(args)
     index_rows = build_core_memory_index(unit_rows, categories)
@@ -281,6 +327,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     overall_rows = build_overall_prosperity_index(score_rows, category_rows)
     backtest_rows = build_prosperity_backtest(index_rows, score_rows)
     validation_rows = _build_requested_validation(args, category_rows)
+    if not index_rows:
+        raise SystemExit("No core memory records returned; existing outputs were not replaced")
+    write_trade_records(all_records, trade_path)
     write_csv_rows(unit_rows, unit_path, UNIT_PRICE_COLUMNS)
     write_csv_rows(index_rows, index_path, INDEX_COLUMNS)
     write_csv_rows(category_rows, category_index_path, CATEGORY_INDEX_COLUMNS)
@@ -320,6 +369,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     if not args.no_charts:
         print(f"Wrote charts to {chart_dir}")
     print_latest_category_growth_summary(category_rows)
+    _write_run_manifest(args, outdir, trade_path, all_records, index_rows)
     return 0
 
 
@@ -332,10 +382,13 @@ def fetch_kcs_records(args: argparse.Namespace):
     if not service_key:
         raise SystemExit("Missing service key. Set DATA_GO_KR_SERVICE_KEY or pass --service-key.")
     hs_codes = args.hs or DEFAULT_HS_CODES
+    root = Path(args.outdir) if hasattr(args, "outdir") else Path(args.out).parent
+    args.snapshot_dir = root / "raw" / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "_" + uuid4().hex[:8])
     client = KCSClient(
         service_key=service_key,
         endpoint=args.endpoint,
         service_key_encoded=args.encoded_key,
+        snapshot_dir=args.snapshot_dir,
     )
     start_yymm = month_to_yymm(args.start)
     availability_hs_codes = hs_codes if args.hs else ["854232"]
